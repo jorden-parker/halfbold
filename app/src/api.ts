@@ -13,6 +13,12 @@ export interface Candidate {
   stale: boolean;
 }
 
+export interface CaskEntry {
+  token: string;
+  name: string;
+  google: boolean;
+}
+
 export interface Preview {
   family: string;
   kind: Kind;
@@ -44,7 +50,11 @@ export function preview(c: Candidate) {
 }
 
 export function casks() {
-  return api<{ casks: string[] }>("casks");
+  return api<{ casks: CaskEntry[] }>("casks");
+}
+
+export function caskFace(token: string) {
+  return api<{ token: string; face: string | null }>("cask-face", token);
 }
 
 export function caskFonts(token: string) {

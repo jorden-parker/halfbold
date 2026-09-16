@@ -1,5 +1,6 @@
 import {
   build,
+  caskFace,
   caskFonts,
   caskInstall,
   casks,
@@ -7,10 +8,11 @@ import {
   preview,
   webFonts,
   type Candidate,
+  type CaskEntry,
   type Kind,
   type WebFonts,
 } from "./api";
-import { loadFace } from "./fonts";
+import { faceAlias, loadFace } from "./fonts";
 
 const SAMPLE_TEXT =
   "The quick brown fox jumps over the lazy dog. Reading gets faster when " +
@@ -23,7 +25,9 @@ type Selection = { tab: "installed"; candidate: Candidate } | { tab: "brew"; tok
 interface State {
   tab: Tab;
   candidates: Candidate[];
-  caskTokens: string[] | null;
+  caskEntries: CaskEntry[] | null;
+  caskFaces: Map<string, string | null>;
+  caskFacesPending: Set<string>;
   selected: Selection;
   web: WebFonts | null;
   busy: string | null;
@@ -32,7 +36,9 @@ interface State {
 const state: State = {
   tab: "installed",
   candidates: [],
-  caskTokens: null,
+  caskEntries: null,
+  caskFaces: new Map(),
+  caskFacesPending: new Set(),
   selected: null,
   web: null,
   busy: null,
@@ -93,11 +99,11 @@ function filteredCandidates(): Candidate[] {
   return state.candidates.filter((c) => c.family.toLowerCase().includes(query));
 }
 
-function filteredTokens(): string[] {
+function filteredCasks(): CaskEntry[] {
   const query = filterEl.value.trim().toLowerCase();
-  const tokens = state.caskTokens ?? [];
-  if (!query) return tokens;
-  return tokens.filter((t) => t.toLowerCase().includes(query));
+  const entries = state.caskEntries ?? [];
+  if (!query) return entries;
+  return entries.filter((e) => e.name.toLowerCase().includes(query) || e.token.toLowerCase().includes(query));
 }
 
 function renderList() {
@@ -106,6 +112,7 @@ function renderList() {
     for (const c of filteredCandidates()) {
       const li = document.createElement("li");
       const nameSpan = document.createElement("span");
+      nameSpan.className = "name";
       nameSpan.textContent = c.family;
       const kindSpan = document.createElement("span");
       kindSpan.className = "kind";
@@ -122,32 +129,102 @@ function renderList() {
         renderList();
         renderDetail();
       });
+      void faceAlias(c.regular).then((alias) => {
+        if (nameSpan.isConnected) {
+          nameSpan.style.fontFamily = alias;
+        }
+      });
       listEl.append(li);
     }
     return;
   }
 
-  const tokens = filteredTokens();
-  const shown = tokens.slice(0, 200);
-  for (const token of shown) {
+  const entries = filteredCasks();
+  const shown = entries.slice(0, 200);
+  for (const entry of shown) {
     const li = document.createElement("li");
-    li.textContent = token;
-    if (state.selected?.tab === "brew" && state.selected.token === token) {
+    li.dataset.token = entry.token;
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "name";
+    nameSpan.textContent = entry.name;
+    const alias = state.caskFaces.get(entry.token);
+    if (alias) {
+      nameSpan.style.fontFamily = alias;
+    }
+    const tokenSpan = document.createElement("span");
+    tokenSpan.className = "token";
+    tokenSpan.textContent = entry.token;
+    li.append(nameSpan, tokenSpan);
+    if (state.selected?.tab === "brew" && state.selected.token === entry.token) {
       li.classList.add("selected");
     }
     li.addEventListener("click", () => {
-      state.selected = { tab: "brew", token };
+      state.selected = { tab: "brew", token: entry.token };
       renderList();
       renderDetail();
     });
     listEl.append(li);
   }
-  if (tokens.length > shown.length) {
+  if (entries.length > shown.length) {
     const more = document.createElement("li");
     more.className = "more";
-    more.textContent = `… and ${tokens.length - shown.length} more`;
+    more.textContent = `… and ${entries.length - shown.length} more`;
     listEl.append(more);
   }
+}
+
+let faceLoaderConcurrency = 0;
+const MAX_CONCURRENT_FACES = 4;
+
+function setupFaceLoader() {
+  const observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const li = entry.target as HTMLElement;
+        const token = li.dataset.token;
+        if (!token) continue;
+        const entry_obj = state.caskEntries?.find((e) => e.token === token);
+        if (!entry_obj?.google) continue;
+        if (state.caskFaces.has(token)) continue;
+        if (state.caskFacesPending.has(token)) continue;
+        if (faceLoaderConcurrency >= MAX_CONCURRENT_FACES) continue;
+
+        state.caskFacesPending.add(token);
+        faceLoaderConcurrency++;
+
+        void (async () => {
+          try {
+            const result = await caskFace(token);
+            if (result.face) {
+              const alias = await faceAlias(result.face);
+              state.caskFaces.set(token, alias);
+              const nameSpan = li.querySelector(".name") as HTMLElement | null;
+              if (nameSpan?.isConnected) {
+                nameSpan.style.fontFamily = alias;
+              }
+            } else {
+              state.caskFaces.set(token, null);
+            }
+          } catch {
+            state.caskFaces.set(token, null);
+          } finally {
+            state.caskFacesPending.delete(token);
+            faceLoaderConcurrency--;
+          }
+        })();
+      }
+    },
+    { root: listEl, rootMargin: "200px" }
+  );
+
+  listEl.addEventListener("DOMNodeInserted", () => {
+    for (const li of listEl.querySelectorAll("li[data-token]")) {
+      observer.observe(li);
+    }
+  });
+
+  return observer;
 }
 
 function clearSamples() {
@@ -232,8 +309,9 @@ async function onUseAs(kind: Kind, c: Candidate) {
 
 async function renderBrewDetail(token: string) {
   clearSamples();
-  titleEl.textContent = token;
-  metaEl.textContent = "";
+  const entry = state.caskEntries?.find((e) => e.token === token);
+  titleEl.textContent = entry?.name ?? token;
+  metaEl.textContent = token;
   actionsEl.textContent = "";
 
   const previewButton = document.createElement("button");
@@ -250,6 +328,9 @@ async function onPreviewCask(token: string) {
   if (!result || result.candidates.length === 0) return;
   const first = result.candidates[0];
   metaEl.textContent = result.candidates.map((c) => `${c.family} (${c.kind})`).join(" · ");
+  const alias = await faceAlias(first.regular);
+  state.caskFaces.set(token, alias);
+  renderList();
   const p = await run(`Previewing ${first.family}…`, () => preview(first));
   if (!p) return;
   await renderSamples(p.regular, p.half);
@@ -261,11 +342,15 @@ async function onInstallCask(token: string) {
   for (const c of installResult.candidates) {
     await run(`Building ${c.family} Half…`, () => build(c));
   }
+  const first = installResult.candidates[0];
+  if (first) {
+    const alias = await faceAlias(first.regular);
+    state.caskFaces.set(token, alias);
+  }
   await reloadInstalled();
   state.tab = "installed";
   tabInstalledEl.classList.add("active");
   tabBrewEl.classList.remove("active");
-  const first = installResult.candidates[0];
   const selected = first
     ? state.candidates.find((x) => x.family === first.family && x.kind === first.kind)
     : undefined;
@@ -296,9 +381,9 @@ async function reloadInstalled() {
 }
 
 async function ensureCasks() {
-  if (state.caskTokens) return;
+  if (state.caskEntries) return;
   const result = await run("Loading casks…", () => casks());
-  if (result) state.caskTokens = result.casks;
+  if (result) state.caskEntries = result.casks;
   renderList();
 }
 
@@ -321,6 +406,7 @@ function moveSelection(delta: number) {
 }
 
 function init() {
+  setupFaceLoader();
   tabInstalledEl.addEventListener("click", () => selectTab("installed"));
   tabBrewEl.addEventListener("click", () => selectTab("brew"));
   filterEl.addEventListener("input", renderList);

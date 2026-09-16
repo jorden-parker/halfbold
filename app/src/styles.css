@@ -124,11 +124,26 @@ aside {
   color: white;
 }
 
+#list .name {
+  font-size: 17px;
+  line-height: 1.2;
+}
+
+#list .token {
+  font-size: 11px;
+  color: var(--muted);
+  margin-left: auto;
+}
+
 #list .kind,
 #list .state {
   font-size: 11px;
   color: var(--muted);
   margin-left: auto;
+}
+
+#list li.selected .token {
+  color: rgba(255, 255, 255, 0.85);
 }
 
 #list li.selected .kind,
