@@ -5,7 +5,7 @@ from test_scan import fill_fonts_dir
 
 from halfbold.cli import main
 from halfbold.scan import build_all
-from halfbold.web import set_web_font
+from halfbold.web import get_web_fonts, set_web_font
 
 CSS = """:root {
   --halfbold-sans: "Inter Half";
@@ -94,3 +94,26 @@ def test_cli_rejects_unknown_family(tmp_path: Path, capsys):
 def test_cli_web_flags_exclusive_with_all():
     with pytest.raises(SystemExit):
         main(["--sans", "Pair", "--all"])
+
+
+def test_get_web_fonts_reads_all_slots(tmp_path: Path):
+    css_path = tmp_path / "halfbold.css"
+    css_path.write_text(CSS)
+
+    assert get_web_fonts(css_path) == {
+        "sans": "Inter Half",
+        "serif": "Source Serif 4 Half",
+        "mono": "JetBrainsMono Nerd Font Half",
+    }
+
+
+def test_get_web_fonts_missing_line_raises(tmp_path: Path):
+    css_path = tmp_path / "halfbold.css"
+    incomplete_css = (
+        ':root {\n  --halfbold-sans: "Inter Half";\n'
+        '  --halfbold-serif: "Source Serif 4 Half";\n}\n'
+    )
+    css_path.write_text(incomplete_css)
+
+    with pytest.raises(ValueError, match="--halfbold-mono"):
+        get_web_fonts(css_path)

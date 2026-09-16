@@ -1,4 +1,5 @@
 import json
+import subprocess
 import tarfile
 import zipfile
 from pathlib import Path
@@ -11,7 +12,10 @@ from halfbold.brewcask import (
     cask_font_dir,
     extract_fonts,
     google_fonts_urls,
+    installed_font_paths,
     parse_cask_info,
+    parse_font_cask_tokens,
+    search_font_casks,
 )
 
 ROBOTO_JSON = {
@@ -38,6 +42,11 @@ def test_parse_cask_info_google():
     assert info.fonts == ["Roboto[wdth,wght].ttf"]
 
 
+def test_parse_cask_info_targets():
+    info = parse_cask_info(json.dumps(ROBOTO_JSON).encode())
+    assert info.targets == ["/Users/x/Library/Fonts/Roboto[wdth,wght].ttf"]
+
+
 def test_parse_cask_info_without_url_specs():
     data = {
         "casks": [
@@ -59,6 +68,7 @@ def test_google_fonts_urls_skips_italic_and_encodes_brackets():
         branch="main",
         only_path="ofl/roboto",
         fonts=["Roboto-Italic[wdth,wght].ttf", "Roboto[wdth,wght].ttf"],
+        targets=[],
     )
     urls = google_fonts_urls(info)
     assert len(urls) == 1
@@ -72,6 +82,7 @@ def test_google_fonts_urls_empty_for_other_git():
         branch="main",
         only_path="fonts",
         fonts=["X.ttf"],
+        targets=[],
     )
     assert google_fonts_urls(info) == []
 
@@ -124,6 +135,7 @@ def test_cask_font_dir_uses_google_download(monkeypatch, tmp_path, variable_font
         branch="main",
         only_path="ofl/testvar",
         fonts=["TestVar.ttf"],
+        targets=[],
     )
 
     def fake_download(info, into):
@@ -160,3 +172,44 @@ def test_cli_preview_cask_png(monkeypatch, tmp_path, variable_font, capsys):
 def test_cli_preview_cask_rejects_other_modes():
     with pytest.raises(SystemExit):
         cli.main(["--preview-cask", "font-x", "--all"])
+
+
+def test_parse_font_cask_tokens_keeps_only_font_prefix():
+    text = "==> Casks\nfont-roboto\n  font-inter \nnot-a-font\n\n"
+    assert parse_font_cask_tokens(text) == ["font-roboto", "font-inter"]
+
+
+def test_installed_font_paths_falls_back_to_fonts_dir(tmp_path):
+    fonts_dir = tmp_path / "fonts"
+    fonts_dir.mkdir()
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    a_path = fonts_dir / "A.ttf"
+    a_path.write_bytes(b"a")
+    b_path = sub / "B.ttf"
+    b_path.write_bytes(b"b")
+    info = CaskInfo(
+        token="font-x",
+        url="",
+        branch="",
+        only_path="",
+        fonts=["A.ttf", "B.ttf"],
+        targets=["", str(b_path)],
+    )
+
+    paths = installed_font_paths(info, fonts_dir)
+    assert paths == [a_path, b_path]
+
+    a_path.unlink()
+    paths = installed_font_paths(info, fonts_dir)
+    assert paths == [b_path]
+
+
+def test_search_font_casks_reports_brew_failure(monkeypatch):
+    def fake_run(*args, **kwargs):
+        raise subprocess.CalledProcessError(1, "brew", stderr=b"boom")
+
+    monkeypatch.setattr(brewcask.subprocess, "run", fake_run)
+
+    with pytest.raises(ValueError, match="brew search failed: boom"):
+        search_font_casks()

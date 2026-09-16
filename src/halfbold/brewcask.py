@@ -21,6 +21,7 @@ class CaskInfo:
     branch: str
     only_path: str
     fonts: list[str]
+    targets: list[str]
 
 
 def parse_cask_info(data: bytes) -> CaskInfo:
@@ -30,13 +31,16 @@ def parse_cask_info(data: bytes) -> CaskInfo:
         raise ValueError("brew info returned no cask")
     cask = casks[0]
     url_specs = cask.get("url_specs") or {}
-    fonts = [a["font"][0] for a in cask.get("artifacts", []) if "font" in a]
+    artifacts = [a for a in cask.get("artifacts", []) if "font" in a]
+    fonts = [a["font"][0] for a in artifacts]
+    targets = [a.get("target", "") for a in artifacts]
     return CaskInfo(
         token=cask["token"],
         url=cask.get("url", ""),
         branch=url_specs.get("branch", ""),
         only_path=url_specs.get("only_path", ""),
         fonts=fonts,
+        targets=targets,
     )
 
 
@@ -181,3 +185,45 @@ def cask_font_dir(token: str, into: Path) -> Path:
     else:
         extract_fonts(fetch_cask_archive(token), into)
     return into
+
+
+FONT_CASK_PREFIX = "font-"
+
+
+def search_font_casks() -> list[str]:
+    try:
+        result = subprocess.run(
+            ["brew", "search", "--cask", FONT_CASK_PREFIX],
+            capture_output=True,
+            check=True,
+        )
+    except subprocess.CalledProcessError as err:
+        stderr = err.stderr.decode() if err.stderr else str(err)
+        raise ValueError(f"brew search failed: {stderr.strip()}") from err
+    return parse_font_cask_tokens(result.stdout.decode())
+
+
+def parse_font_cask_tokens(text: str) -> list[str]:
+    tokens = [line.strip() for line in text.splitlines()]
+    return [t for t in tokens if t.startswith(FONT_CASK_PREFIX)]
+
+
+def install_cask(token: str) -> None:
+    try:
+        subprocess.run(
+            ["brew", "install", "--cask", token],
+            capture_output=True,
+            check=True,
+        )
+    except subprocess.CalledProcessError as err:
+        stderr = err.stderr.decode() if err.stderr else str(err)
+        raise ValueError(f"brew install failed: {stderr.strip()}") from err
+
+
+def installed_font_paths(info: CaskInfo, fonts_dir: Path) -> list[Path]:
+    paths = []
+    for font, target in zip(info.fonts, info.targets, strict=True):
+        path = Path(target) if target else fonts_dir / Path(font).name
+        if path.exists():
+            paths.append(path)
+    return paths

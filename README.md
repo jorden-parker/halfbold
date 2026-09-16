@@ -85,3 +85,8 @@ uv run pytest
 uv run ruff check . && uv run ruff format .
 go -C tui vet ./... && go -C tui test ./...
 ```
+
+`uv run halfbold-api <subcommand>` is the JSON interface the desktop app
+(`app/`) drives: `installed`, `build`, `preview`, `casks`, `cask-fonts`,
+`cask-install`, `web`. Each prints one JSON object; failures print
+`{"error": …}` and exit 1.
