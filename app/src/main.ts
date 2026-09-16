@@ -21,6 +21,7 @@ const DEFAULT_SAMPLE_TEXT =
   "start of a word to recognise it.";
 const SAMPLE_TEXT_KEY = "halfbold.sampleText";
 const HALF_SUFFIX = " Half";
+const ARCHIVE_SETTLE_MS = 600;
 
 type Tab = "installed" | "brew";
 type Selection = { tab: "installed"; candidate: Candidate } | { tab: "brew"; token: string } | null;
@@ -407,12 +408,20 @@ async function renderBrewDetail(token: string) {
   metaEl.textContent = `Homebrew cask ${token}`;
   actionsEl.textContent = "";
   actionsEl.append(makeButton("Install and build Half", () => onInstallCask(token), "primary"));
-  showPending(entry?.google ? "Downloading from Google Fonts…" : "Fetching the cask archive…");
+  showPending(
+    entry?.google
+      ? "Downloading from Google Fonts…"
+      : "Fetching the whole cask archive. Large casks can take a minute.",
+  );
 
+  if (!entry?.google) {
+    await new Promise((resolve) => setTimeout(resolve, ARCHIVE_SETTLE_MS));
+    if (!stillSelected(selection)) return;
+  }
   const result = await run(`Loading ${token}…`, () => caskFonts(token));
   if (!stillSelected(selection)) return;
   if (!result || result.candidates.length === 0) {
-    showPending("No preview for this cask.");
+    showPending(result ? "No preview for this cask." : "Cannot convert this cask.");
     return;
   }
   const first = result.candidates[0];

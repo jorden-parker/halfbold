@@ -122,6 +122,23 @@ def test_cask_fonts_reuses_downloaded_fonts(monkeypatch, tmp_path: Path, capsys)
     assert payloads[0] == payloads[1]
 
 
+def test_cask_fonts_explains_why_nothing_converts(monkeypatch, tmp_path: Path, capsys):
+    cache_dir = tmp_path / "cache"
+    monkeypatch.setattr(api, "CACHE_DIR", cache_dir)
+
+    def fake_cask_font_dir(token, into):
+        make_font(into / "Lonely-Regular.ttf", "Lonely", "Regular", 100)
+        return into
+
+    monkeypatch.setattr(api, "cask_font_dir", fake_cask_font_dir)
+
+    assert main(["cask-fonts", "font-lonely"]) == 1
+
+    error = json.loads(capsys.readouterr().out)["error"]
+    assert "Lonely (Regular)" in error
+    assert "Regular and Bold pair" in error
+
+
 def test_serve_answers_requests_by_id(tmp_path: Path):
     fonts = tmp_path / "fonts"
     fill_fonts_dir(fonts)

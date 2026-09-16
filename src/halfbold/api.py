@@ -119,11 +119,32 @@ def cached_cask_fonts(token: str) -> list[Path]:
     return sorted(into.rglob("*.ttf"))
 
 
+def unconvertible_reason(token: str, into: Path) -> str:
+    files = sorted(p for p in into.rglob("*") if p.suffix.lower() in {".ttf", ".otf"})
+    infos = [
+        info
+        for path in files
+        if not path.name.startswith("._") and (info := read_font_info(path))
+    ]
+    if not infos:
+        return f"{token} contains no font files halfbold can read"
+    families: dict[str, list[str]] = {}
+    for info in infos:
+        families.setdefault(info.family, []).append(info.style)
+    described = "; ".join(
+        f"{family} ({', '.join(styles)})" for family, styles in families.items()
+    )
+    hint = "halfbold needs a Regular and Bold pair or a variable font"
+    if all(p.suffix.lower() == ".otf" for p in files):
+        hint += ", and .otf files with CFF outlines are not supported"
+    return f"{token} only has {described}. {hint}."
+
+
 def cask_fonts(args: argparse.Namespace) -> dict:
     candidates = candidates_from_paths(cached_cask_fonts(args.token))
     if not candidates:
         raise ValueError(
-            f"no Regular + Bold pair or variable TrueType font in {args.token}"
+            unconvertible_reason(args.token, CACHE_DIR / "casks" / args.token)
         )
     return {
         "token": args.token,
