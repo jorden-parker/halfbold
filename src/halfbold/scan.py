@@ -99,9 +99,13 @@ def find_installed_half_families(fonts_dir: Path) -> set[str]:
 
 
 def find_candidates(fonts_dir: Path) -> list[Candidate]:
+    return candidates_from_paths(sorted(fonts_dir.glob("*.ttf")))
+
+
+def candidates_from_paths(paths: list[Path]) -> list[Candidate]:
     infos = [
         info
-        for path in sorted(fonts_dir.glob("*.ttf"))
+        for path in paths
         if (info := read_font_info(path)) is not None
         and not is_half_output(info)
         and not is_italic(info)

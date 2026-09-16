@@ -8,6 +8,7 @@ from halfbold.build import (
     STYLE_SUFFIX,
     build_halfbold_font,
 )
+from halfbold.preview import preview_candidates, preview_files
 from halfbold.scan import KINDS, build_all, find_installed_half_families
 from halfbold.web import set_web_font
 
@@ -97,13 +98,33 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=MAX_WORD_LENGTH,
         help="Longest word that gets its own rule; longer words use this one",
     )
+    parser.add_argument(
+        "--preview",
+        action="store_true",
+        help=(
+            "Draw a half-bold sample of REGULAR [BOLD] (or every font in a "
+            "folder) in the terminal"
+        ),
+    )
+    parser.add_argument(
+        "--png", type=Path, help="With --preview, write the sample image here instead"
+    )
+    parser.add_argument(
+        "--wait",
+        action="store_true",
+        help="With --preview, keep the image until enter is pressed (used by the TUI)",
+    )
     args = parser.parse_args(argv)
     args.web = {kind: getattr(args, kind) for kind in KINDS if getattr(args, kind)}
     if args.web and (args.all or args.regular is not None):
         parser.error(
             "--sans/--serif/--mono cannot be combined with a font file or --all"
         )
-    if not args.web and not args.all and args.regular is None:
+    if args.preview and (args.all or args.web or args.regular is None):
+        parser.error("--preview takes a font file or folder and no other mode")
+    if (args.png or args.wait) and not args.preview:
+        parser.error("--png and --wait need --preview")
+    if not args.web and not args.all and not args.preview and args.regular is None:
         parser.error(
             "give a font file, --all to scan the fonts folder, or --sans/--serif/--mono"
         )
@@ -125,6 +146,20 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 return 1
             print(set_web_font(args.css, kind, family))
+        return 0
+    if args.preview:
+        try:
+            if args.regular.is_dir():
+                lines = preview_candidates(args.regular, png=args.png, wait=args.wait)
+            else:
+                lines = preview_files(
+                    args.regular, args.bold, png=args.png, wait=args.wait
+                )
+        except ValueError as err:
+            print(err)
+            return 1
+        for line in lines:
+            print(line)
         return 0
     if args.all:
         for line in build_all(args.fonts_dir, force=args.force, dry_run=args.dry_run):

@@ -38,6 +38,20 @@ uv run halfbold --all --dry-run                 # shows each family's kind
 uv run halfbold --sans "Inter" --mono "JetBrainsMono Nerd Font"
 ```
 
+Preview how a font will look half-bold without converting it. The sample
+is drawn as an image straight into the terminal (kitty graphics protocol —
+Ghostty, kitty, WezTerm); anywhere else it is written to a PNG whose path
+is printed:
+
+```sh
+uv run halfbold --preview ~/Library/Fonts/InterVariable.ttf
+uv run halfbold --preview ~/Library/Fonts            # every convertible font, up to three
+uv run halfbold --preview Inter-Regular.ttf Inter-Bold.ttf --png inter.png
+```
+
+Inside tmux add `set -g allow-passthrough on` to `tmux.conf` (tmux ≥ 3.3)
+so the image reaches the terminal.
+
 Or let launchd do it. This installs a user agent that watches `~/Library/Fonts` and runs `halfbold --all` whenever anything in it changes, so `brew upgrade`, a Font Book install, or a manual copy all produce Half twins within about 30 seconds:
 
 ```sh
