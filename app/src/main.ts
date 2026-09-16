@@ -51,6 +51,8 @@ const actionsEl = document.querySelector<HTMLDivElement>("#actions")!;
 const statusEl = document.querySelector<HTMLParagraphElement>("#status")!;
 const sampleHalfEl = document.querySelector<HTMLParagraphElement>("#sample-half")!;
 const samplePlainEl = document.querySelector<HTMLParagraphElement>("#sample-plain")!;
+const headingHalfEl = document.querySelector<HTMLHeadingElement>("#heading-half")!;
+const headingPlainEl = document.querySelector<HTMLHeadingElement>("#heading-plain")!;
 
 function setBusy(label: string | null) {
   state.busy = label;
@@ -148,17 +150,30 @@ function renderList() {
   }
 }
 
-async function renderSamples(regular: string, bold: string | null, half: string) {
+function clearSamples() {
+  sampleHalfEl.textContent = "";
+  sampleHalfEl.style.fontFamily = "";
+  sampleHalfEl.style.fontFeatureSettings = "";
+  headingHalfEl.hidden = true;
+
+  samplePlainEl.textContent = "";
+  samplePlainEl.style.fontFamily = "";
+  samplePlainEl.style.fontWeight = "";
+  headingPlainEl.hidden = true;
+}
+
+async function renderSamples(regular: string, half: string) {
   const halfAlias = await loadFace(half);
   sampleHalfEl.style.fontFamily = halfAlias;
   sampleHalfEl.style.fontFeatureSettings = '"calt" 1';
   sampleHalfEl.textContent = SAMPLE_TEXT;
+  headingHalfEl.hidden = false;
 
   const plainAlias = await loadFace(regular);
   samplePlainEl.style.fontFamily = plainAlias;
   samplePlainEl.style.fontWeight = "400";
   samplePlainEl.textContent = SAMPLE_TEXT;
-  void bold;
+  headingPlainEl.hidden = false;
 }
 
 function pairDescription(c: Candidate): string {
@@ -171,6 +186,7 @@ function fileNames(c: Candidate): string {
 }
 
 async function renderInstalledDetail(c: Candidate) {
+  clearSamples();
   titleEl.textContent = c.family;
   metaEl.textContent = `${c.kind} · ${pairDescription(c)} · ${fileNames(c)}`;
   actionsEl.textContent = "";
@@ -192,7 +208,7 @@ async function renderInstalledDetail(c: Candidate) {
 
   const p = await run(`Previewing ${c.family}…`, () => preview(c));
   if (!p) return;
-  await renderSamples(p.regular, p.bold, p.half);
+  await renderSamples(p.regular, p.half);
 }
 
 async function onBuild(c: Candidate) {
@@ -215,6 +231,7 @@ async function onUseAs(kind: Kind, c: Candidate) {
 }
 
 async function renderBrewDetail(token: string) {
+  clearSamples();
   titleEl.textContent = token;
   metaEl.textContent = "";
   actionsEl.textContent = "";
@@ -235,7 +252,7 @@ async function onPreviewCask(token: string) {
   metaEl.textContent = result.candidates.map((c) => `${c.family} (${c.kind})`).join(" · ");
   const p = await run(`Previewing ${first.family}…`, () => preview(first));
   if (!p) return;
-  await renderSamples(p.regular, p.bold, p.half);
+  await renderSamples(p.regular, p.half);
 }
 
 async function onInstallCask(token: string) {
