@@ -12,3 +12,7 @@ wheels/
 # Go
 tui/halfbold-tui
 tui/tui
+
+# Tauri app
+app/node_modules/
+app/src-tauri/target/

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>halfbold</title>
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+
+  <body>
+    <header>
+      <h1>halfbold</h1>
+      <nav>
+        <button id="tab-installed" class="tab active">Installed</button>
+        <button id="tab-brew" class="tab">Homebrew</button>
+      </nav>
+      <div id="slots"></div>
+    </header>
+    <main>
+      <aside>
+        <input id="filter" type="search" placeholder="Filter" autocomplete="off" />
+        <ul id="list"></ul>
+      </aside>
+      <section id="detail">
+        <p id="empty">Pick a font.</p>
+        <div id="panel" hidden>
+          <h2 id="title"></h2>
+          <p id="meta"></p>
+          <div id="actions"></div>
+          <p id="status"></p>
+          <h3>Half bold</h3>
+          <p id="sample-half" class="sample"></p>
+          <h3>Plain</h3>
+          <p id="sample-plain" class="sample"></p>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
