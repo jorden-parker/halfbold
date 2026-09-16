@@ -16,7 +16,7 @@ Never needed by hand. `autoreload.js` runs as the background service worker, has
 
 ## Change the fonts
 
-Edit `halfbold.css`: the three variables at the top name the installed font families. Swap the sans rule's variable to `--halfbold-serif` to read everything in serif.
+Run `uv run halfbold --sans FAMILY`, `--serif FAMILY`, or `--mono FAMILY` (any combination in one call) to point a slot at a different installed Half font; each rewrites the matching variable at the top of `halfbold.css`. Swap the sans rule's variable to `--halfbold-serif` to read everything in serif.
 
 ## Limit to some sites
 

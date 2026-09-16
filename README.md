@@ -27,6 +27,15 @@ uv run halfbold --all --dry-run  # show the plan
 uv run halfbold --all --force    # rebuild everything
 ```
 
+Point the Chrome extension at a different Half font. Each web page slot
+(`sans`, `serif`, `mono`) maps to one installed Half family; the extension
+reloads itself within 30 seconds:
+
+```sh
+uv run halfbold --all --dry-run                 # shows each family's kind
+uv run halfbold --sans "Inter" --mono "JetBrainsMono Nerd Font"
+```
+
 Or let launchd do it. This installs a user agent that watches `~/Library/Fonts` and runs `halfbold --all` whenever anything in it changes, so `brew upgrade`, a Font Book install, or a manual copy all produce Half twins within about 30 seconds:
 
 ```sh

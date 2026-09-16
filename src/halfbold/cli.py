@@ -5,11 +5,14 @@ from halfbold.build import (
     BOLD_WEIGHT,
     MAX_WORD_LENGTH,
     REGULAR_WEIGHT,
+    STYLE_SUFFIX,
     build_halfbold_font,
 )
-from halfbold.scan import build_all
+from halfbold.scan import KINDS, build_all, find_installed_half_families
+from halfbold.web import set_web_font
 
 DEFAULT_FONTS_DIR = Path.home() / "Library" / "Fonts"
+DEFAULT_CSS = Path(__file__).resolve().parents[2] / "chrome-extension" / "halfbold.css"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -46,7 +49,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--fonts-dir",
         type=Path,
         default=DEFAULT_FONTS_DIR,
-        help=f"Folder scanned by --all (default: {DEFAULT_FONTS_DIR})",
+        help=(
+            "Folder scanned by --all and checked by --sans/--serif/--mono "
+            f"(default: {DEFAULT_FONTS_DIR})"
+        ),
     )
     parser.add_argument(
         "--force",
@@ -57,6 +63,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--dry-run",
         action="store_true",
         help="With --all, list what would be built without writing anything",
+    )
+    for kind in KINDS:
+        parser.add_argument(
+            f"--{kind}",
+            metavar="FAMILY",
+            help=f'Make FAMILY the extension\'s {kind} font ("Half" suffix optional)',
+        )
+    parser.add_argument(
+        "--css",
+        type=Path,
+        default=DEFAULT_CSS,
+        help=(
+            "Extension stylesheet edited by --sans/--serif/--mono "
+            f"(default: {DEFAULT_CSS})"
+        ),
     )
     parser.add_argument(
         "--regular-weight",
@@ -77,13 +98,34 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Longest word that gets its own rule; longer words use this one",
     )
     args = parser.parse_args(argv)
-    if not args.all and args.regular is None:
-        parser.error("give a font file, or --all to scan the fonts folder")
+    args.web = {kind: getattr(args, kind) for kind in KINDS if getattr(args, kind)}
+    if args.web and (args.all or args.regular is not None):
+        parser.error(
+            "--sans/--serif/--mono cannot be combined with a font file or --all"
+        )
+    if not args.web and not args.all and args.regular is None:
+        parser.error(
+            "give a font file, --all to scan the fonts folder, or --sans/--serif/--mono"
+        )
     return args
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    if args.web:
+        installed = find_installed_half_families(args.fonts_dir)
+        for kind, family in args.web.items():
+            if not family.endswith(f" {STYLE_SUFFIX}"):
+                family = f"{family} {STYLE_SUFFIX}"
+            if family not in installed:
+                names = ", ".join(sorted(installed)) or "none"
+                print(
+                    f"{family!r} is not installed in {args.fonts_dir}; "
+                    f"installed Half fonts: {names}"
+                )
+                return 1
+            print(set_web_font(args.css, kind, family))
+        return 0
     if args.all:
         for line in build_all(args.fonts_dir, force=args.force, dry_run=args.dry_run):
             print(line)
