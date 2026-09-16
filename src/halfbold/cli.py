@@ -7,6 +7,9 @@ from halfbold.build import (
     REGULAR_WEIGHT,
     build_halfbold_font,
 )
+from halfbold.scan import build_all
+
+DEFAULT_FONTS_DIR = Path.home() / "Library" / "Fonts"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -15,15 +18,45 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description=(
             "Merge a Regular and a Bold TTF, or instance a variable TTF at two "
             "weights, into one font whose calt feature bolds the first half of "
-            "every word."
+            "every word. With --all, scan a fonts folder and build every "
+            "missing or outdated Half font."
         ),
     )
-    parser.add_argument("regular", type=Path, help="Regular weight or variable .ttf")
+    parser.add_argument(
+        "regular", type=Path, nargs="?", help="Regular weight or variable .ttf"
+    )
     parser.add_argument(
         "bold",
         type=Path,
         nargs="?",
         help="Bold weight .ttf of the same family; omit for a variable font",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        help="Output .ttf (default: <regular stem>-Half.ttf next to the input)",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Scan --fonts-dir and build a Half font for every eligible family",
+    )
+    parser.add_argument(
+        "--fonts-dir",
+        type=Path,
+        default=DEFAULT_FONTS_DIR,
+        help=f"Folder scanned by --all (default: {DEFAULT_FONTS_DIR})",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="With --all, rebuild even when the Half font is newer than its source",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="With --all, list what would be built without writing anything",
     )
     parser.add_argument(
         "--regular-weight",
@@ -38,22 +71,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="wght value for the bold letters when instancing a variable font",
     )
     parser.add_argument(
-        "-o",
-        "--output",
-        type=Path,
-        help="Output .ttf (default: <regular stem>-Half.ttf next to the input)",
-    )
-    parser.add_argument(
         "--max-word-length",
         type=int,
         default=MAX_WORD_LENGTH,
         help="Longest word that gets its own rule; longer words use this one",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if not args.all and args.regular is None:
+        parser.error("give a font file, or --all to scan the fonts folder")
+    return args
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    if args.all:
+        for line in build_all(args.fonts_dir, force=args.force, dry_run=args.dry_run):
+            print(line)
+        return 0
     output = args.output or args.regular.with_name(f"{args.regular.stem}-Half.ttf")
     letters = build_halfbold_font(
         args.regular,
