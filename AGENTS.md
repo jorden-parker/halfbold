@@ -10,6 +10,11 @@ Personal Python CLI. Takes a Regular and a Bold TrueType font of the same family
 - `fontTools.feaLib` compiles that into a fresh `GSUB` table. The original font's `GSUB` features (ligatures, etc.) are dropped; `GPOS` (kerning) is kept.
 - The family name gets a ` Half` suffix so it installs next to the original.
 
+## Automation
+
+- `scripts/install-watcher.sh` installs a launchd user agent (`com.jorden.halfbold`) with `WatchPaths` on `~/Library/Fonts`. Every change there runs `halfbold --all`. Its own output lands in the same folder, which re-triggers one more run that reports everything up to date; that is expected.
+- `chrome-extension/install.sh` opens `chrome://extensions` via AppleScript (macOS `open` silently drops `chrome://` URLs) for the one manual Load unpacked step.
+
 ## Conventions
 
 - Run `uv run ruff check .`, `uv run ruff format --check .`, and `uv run pytest` after making changes, and fix everything they report.

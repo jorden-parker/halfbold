@@ -27,7 +27,13 @@ uv run halfbold --all --dry-run  # show the plan
 uv run halfbold --all --force    # rebuild everything
 ```
 
-Run it after `brew upgrade` and new or updated fonts get a Half twin.
+Or let launchd do it. This installs a user agent that watches `~/Library/Fonts` and runs `halfbold --all` whenever anything in it changes, so `brew upgrade`, a Font Book install, or a manual copy all produce Half twins within about 30 seconds:
+
+```sh
+scripts/install-watcher.sh
+```
+
+Log: `~/Library/Logs/halfbold.log`. The script prints the removal command.
 
 A single variable font is instanced at weight 400 and 700 (`--regular-weight`, `--bold-weight` to change). Output written into `~/Library/Fonts` is installed immediately on macOS.
 
