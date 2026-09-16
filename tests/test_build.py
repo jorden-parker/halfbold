@@ -13,6 +13,16 @@ from halfbold.cli import main
 
 def test_bold_prefix_is_half_rounded_up():
     assert [bold_prefix_length(n) for n in (2, 3, 4, 5, 6)] == [1, 2, 2, 3, 3]
+    assert [bold_prefix_length(n, 0.25) for n in (2, 4, 8)] == [1, 1, 2]
+    assert [bold_prefix_length(n, 1.0) for n in (2, 5)] == [2, 5]
+
+
+def test_feature_code_honours_share_and_min_word_length():
+    fea = build_feature_code(["a", "b"], 6, bold_share=0.25, min_word_length=4)
+    rules = [line for line in fea.splitlines() if line.startswith("  sub @plain'")]
+    assert len(rules) == 3
+    assert rules[-1].count("lookup TO_HALF") == 1
+    assert rules[0].count("lookup TO_HALF") == 2
 
 
 def test_feature_code_lists_longest_words_first():

@@ -7,29 +7,39 @@ from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTFont
 from fontTools.varLib import instancer
 
+from halfbold.settings import (
+    BOLD_SHARE,
+    MAX_WORD_LENGTH,
+    MIN_WORD_LENGTH,
+    Settings,
+)
+
 BOLD_SUFFIX = ".half"
-MAX_WORD_LENGTH = 20
 STYLE_SUFFIX = "Half"
-REGULAR_WEIGHT = 400
-BOLD_WEIGHT = 700
 
 
 def build_halfbold_font(
     regular_path: Path,
     bold_path: Path | None,
     output_path: Path,
-    max_word_length: int = MAX_WORD_LENGTH,
-    regular_weight: float = REGULAR_WEIGHT,
-    bold_weight: float = BOLD_WEIGHT,
+    settings: Settings | None = None,
 ) -> list[str]:
-    regular, bold = load_font_pair(regular_path, bold_path, regular_weight, bold_weight)
+    settings = settings or Settings()
+    regular, bold = load_font_pair(
+        regular_path, bold_path, settings.regular_weight, settings.bold_weight
+    )
 
     letters = word_letter_glyphs(regular, bold)
     if not letters:
         raise ValueError("no letter glyphs shared between the two fonts")
 
     copy_bold_glyphs(regular, bold, letters)
-    fea = build_feature_code(letters, max_word_length)
+    fea = build_feature_code(
+        letters,
+        settings.max_word_length,
+        settings.bold_share,
+        settings.min_word_length,
+    )
     addOpenTypeFeaturesFromString(regular, fea, tables=["GSUB"])
     rename_font(regular)
 
@@ -106,11 +116,16 @@ def copy_bold_glyphs(regular: TTFont, bold: TTFont, letters: list[str]) -> None:
         hmtx[new_name] = bold_hmtx[name]
 
 
-def bold_prefix_length(word_length: int) -> int:
-    return math.ceil(word_length / 2)
+def bold_prefix_length(word_length: int, bold_share: float = BOLD_SHARE) -> int:
+    return min(word_length, max(1, math.ceil(word_length * bold_share)))
 
 
-def build_feature_code(letters: list[str], max_word_length: int) -> str:
+def build_feature_code(
+    letters: list[str],
+    max_word_length: int = MAX_WORD_LENGTH,
+    bold_share: float = BOLD_SHARE,
+    min_word_length: int = MIN_WORD_LENGTH,
+) -> str:
     plain = " ".join(letters)
     half = " ".join(name + BOLD_SUFFIX for name in letters)
     lines = [
@@ -122,8 +137,8 @@ def build_feature_code(letters: list[str], max_word_length: int) -> str:
         "feature calt {",
         "  ignore sub [@plain @half] @plain';",
     ]
-    for length in range(max_word_length, 1, -1):
-        prefix = bold_prefix_length(length)
+    for length in range(max_word_length, max(min_word_length, 1) - 1, -1):
+        prefix = bold_prefix_length(length, bold_share)
         marked = " ".join("@plain' lookup TO_HALF" for _ in range(prefix))
         rest = " ".join("@plain" for _ in range(length - prefix))
         lines.append(f"  sub {marked} {rest};".replace("  ;", ";").rstrip())

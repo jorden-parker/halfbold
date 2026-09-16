@@ -6,6 +6,7 @@ from typing import Literal
 from fontTools.ttLib import TTFont, TTLibError
 
 from halfbold.build import STYLE_SUFFIX, build_halfbold_font
+from halfbold.settings import Settings
 
 REGULAR_STYLES = {"regular", "book", "normal", "roman"}
 BOLD_STYLES = {"bold"}
@@ -135,7 +136,12 @@ def candidates_from_paths(paths: list[Path]) -> list[Candidate]:
     return candidates
 
 
-def build_all(fonts_dir: Path, force: bool = False, dry_run: bool = False) -> list[str]:
+def build_all(
+    fonts_dir: Path,
+    force: bool = False,
+    dry_run: bool = False,
+    settings: Settings | None = None,
+) -> list[str]:
     report: list[str] = []
     for candidate in find_candidates(fonts_dir):
         if not force and not candidate.is_stale():
@@ -148,7 +154,9 @@ def build_all(fonts_dir: Path, force: bool = False, dry_run: bool = False) -> li
             )
             continue
         try:
-            build_halfbold_font(candidate.regular, candidate.bold, candidate.output)
+            build_halfbold_font(
+                candidate.regular, candidate.bold, candidate.output, settings
+            )
             report.append(
                 f"built       {candidate.output.name}  "
                 f"<- {candidate.family} ({candidate.kind})"

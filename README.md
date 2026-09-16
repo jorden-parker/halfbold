@@ -65,7 +65,7 @@ scripts/install-watcher.sh
 
 Log: `~/Library/Logs/halfbold.log`. The script prints the removal command.
 
-A single variable font is instanced at weight 400 and 700 (`--regular-weight`, `--bold-weight` to change). Output written into `~/Library/Fonts` is installed immediately on macOS.
+A single variable font is instanced at weight 400 and 700 (`--regular-weight`, `--bold-weight` to change). `--bold-share 0.4` bolds fewer letters per word and `--min-word-length 4` leaves short words plain; without flags, both come from the saved settings file. Output written into `~/Library/Fonts` is installed immediately on macOS.
 
 Fonts from Homebrew work directly:
 
@@ -85,15 +85,29 @@ at a family. It drives `halfbold-api` under the hood, so the Python package
 stays the only place with font logic. Homebrew casks are listed by font name
 (from the Homebrew formulae index, cached for a day) and Google Fonts casks
 are drawn in their own face; other casks pick up their face after a preview
-or install.
+or install. The Homebrew list only shows casks halfbold can convert, judged
+from the font file names in the Homebrew index (TrueType, and either a
+variable font or a Regular plus Bold pair). Selecting an installed font or a
+Google Fonts cask previews it straight away; other casks show a "Download and
+preview" button because they ship as whole archives. The sample text is
+editable and remembered. Hovering a Google Fonts cask fetches it in the
+background, and every download lands in `~/Library/Caches/halfbold`, so a
+cask previews once per machine. Sliders above the specimen set the bold
+share, the shortest word that gets bolded and, for variable fonts, the plain
+and bold weights. They are saved to
+`~/Library/Application Support/halfbold/settings.json`, which the CLI and the
+launchd watcher read too, so every rebuild uses the same choices.
 
 ```sh
-cd app && pnpm install && pnpm tauri dev      # develop
-cd app && pnpm tauri build                    # app/src-tauri/target/release/bundle/macos/halfbold.app
+cd app && bun install && bun tauri dev        # develop
+cd app && bun tauri build                     # app/src-tauri/target/release/bundle/macos/halfbold.app
 ```
 
+The app keeps one `halfbold-api serve` process alive and sends it JSON
+requests over stdin, so only the first call pays Python start-up.
+
 Needs Rust (`brew install rustup && rustup toolchain install stable && rustup default stable`,
-then put `/opt/homebrew/opt/rustup/bin` on `PATH`), pnpm and `uv`. Set
+then put `/opt/homebrew/opt/rustup/bin` on `PATH`), Bun (`brew install bun`) and `uv`. Set
 `HALFBOLD_REPO=/path/to/halfbold` if the built app is moved away from the
 repo checkout.
 
@@ -109,5 +123,7 @@ go -C tui vet ./... && go -C tui test ./...
 
 `uv run halfbold-api <subcommand>` is the JSON interface the desktop app
 (`app/`) drives: `installed`, `build`, `preview`, `casks`, `cask-fonts`,
-`cask-install`, `web`. Each prints one JSON object; failures print
-`{"error": …}` and exit 1.
+`cask-face`, `cask-install`, `settings`, `web`. Each prints one JSON object; failures print
+`{"error": …}` and exit 1. `serve` reads `{"id", "args"}` lines on stdin and
+answers each with `{"id", "ok", "result" | "error"}`, running requests
+concurrently.

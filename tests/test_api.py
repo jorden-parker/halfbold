@@ -1,3 +1,4 @@
+import io
 import json
 import os
 from pathlib import Path
@@ -69,6 +70,40 @@ def test_preview_caches_half_in_cache_dir(
     assert Path(payload["half"]).stat().st_mtime != first_mtime
 
 
+def test_settings_command_saves_and_reports(monkeypatch, tmp_path: Path, capsys):
+    path = tmp_path / "settings.json"
+    monkeypatch.setattr("halfbold.settings.default_settings_path", lambda: path)
+
+    assert main(["settings", json.dumps({"bold_share": 0.4, "bold_weight": 800})]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["settings"]["bold_share"] == 0.4
+    assert payload["defaults"]["bold_share"] == 0.5
+
+    assert main(["settings"]) == 0
+    assert json.loads(capsys.readouterr().out)["settings"]["bold_weight"] == 800
+
+    assert main(["settings", json.dumps({"bold_share": 2})]) == 1
+    assert "bold_share" in json.loads(capsys.readouterr().out)["error"]
+
+
+def test_preview_cache_key_includes_settings(
+    font_pair, tmp_path: Path, capsys, monkeypatch
+):
+    regular, bold = font_pair
+    monkeypatch.setattr(api, "CACHE_DIR", tmp_path / "cache")
+    path = tmp_path / "settings.json"
+    monkeypatch.setattr("halfbold.settings.default_settings_path", lambda: path)
+
+    assert main(["preview", str(regular), str(bold)]) == 0
+    first = json.loads(capsys.readouterr().out)["half"]
+    assert main(["settings", json.dumps({"bold_share": 0.75})]) == 0
+    capsys.readouterr()
+    assert main(["preview", str(regular), str(bold)]) == 0
+    second = json.loads(capsys.readouterr().out)
+    assert second["half"] != first
+    assert second["settings"]["bold_share"] == 0.75
+
+
 def test_preview_rejects_non_font(tmp_path: Path, capsys):
     bad = tmp_path / "bad.ttf"
     bad.write_bytes(b"nope")
@@ -98,6 +133,66 @@ def test_cask_fonts_downloads_into_cache(monkeypatch, tmp_path: Path, capsys):
     assert payload["token"] == "font-test"
     assert len(payload["candidates"]) == 1
     assert payload["candidates"][0]["family"] == "Test"
+
+
+def test_cask_fonts_reuses_downloaded_fonts(monkeypatch, tmp_path: Path, capsys):
+    cache_dir = tmp_path / "cache"
+    monkeypatch.setattr(api, "CACHE_DIR", cache_dir)
+    downloads = []
+
+    def fake_cask_font_dir(token, into):
+        downloads.append(token)
+        make_font(into / "Test-Regular.ttf", "Test", "Regular", 100)
+        make_font(into / "Test-Bold.ttf", "Test", "Bold", 200)
+        return into
+
+    monkeypatch.setattr(api, "cask_font_dir", fake_cask_font_dir)
+
+    assert main(["cask-fonts", "font-test"]) == 0
+    assert main(["cask-fonts", "font-test"]) == 0
+
+    assert downloads == ["font-test"]
+    payloads = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert payloads[0] == payloads[1]
+
+
+def test_cask_fonts_explains_why_nothing_converts(monkeypatch, tmp_path: Path, capsys):
+    cache_dir = tmp_path / "cache"
+    monkeypatch.setattr(api, "CACHE_DIR", cache_dir)
+
+    def fake_cask_font_dir(token, into):
+        make_font(into / "Lonely-Regular.ttf", "Lonely", "Regular", 100)
+        return into
+
+    monkeypatch.setattr(api, "cask_font_dir", fake_cask_font_dir)
+
+    assert main(["cask-fonts", "font-lonely"]) == 1
+
+    error = json.loads(capsys.readouterr().out)["error"]
+    assert "Lonely (Regular)" in error
+    assert "Regular and Bold pair" in error
+
+
+def test_serve_answers_requests_by_id(tmp_path: Path):
+    fonts = tmp_path / "fonts"
+    fill_fonts_dir(fonts)
+    requests = [
+        {"id": 1, "args": ["installed", "--fonts-dir", str(fonts)]},
+        {"id": 2, "args": ["preview", str(tmp_path / "missing.ttf")]},
+        {"id": 3, "args": ["serve"]},
+    ]
+    stdin = io.StringIO("\n".join(json.dumps(r) for r in requests) + "\n")
+    stdout = io.StringIO()
+
+    assert api.serve(stdin, stdout) == 0
+
+    replies = {r["id"]: r for r in map(json.loads, stdout.getvalue().splitlines())}
+    assert replies[1]["ok"] is True
+    families = sorted(c["family"] for c in replies[1]["result"]["candidates"])
+    assert families == ["Pair", "Var"]
+    assert replies[2]["ok"] is False
+    assert "missing.ttf" in replies[2]["error"]
+    assert replies[3] == {"id": 3, "ok": False, "error": "serve cannot be nested"}
 
 
 def test_cask_install_returns_installed_candidates(monkeypatch, tmp_path: Path, capsys):
@@ -163,11 +258,16 @@ def test_casks_returns_names_from_index(monkeypatch, capsys):
                 "name": ["Roboto"],
                 "url": "https://github.com/google/fonts.git",
                 "url_specs": {"only_path": "ofl/roboto"},
+                "artifacts": [{"font": ["Roboto[wdth,wght].ttf"]}],
             },
             {
                 "token": "font-noto",
                 "name": ["Noto Sans"],
                 "url": "https://x.zip",
+                "artifacts": [
+                    {"font": ["NotoSans-Regular.ttf"]},
+                    {"font": ["NotoSans-Bold.ttf"]},
+                ],
             },
             {
                 "token": "not-font",

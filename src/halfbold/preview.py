@@ -11,8 +11,9 @@ from typing import BinaryIO
 
 from PIL import Image, ImageDraw, ImageFont
 
-from halfbold.build import BOLD_WEIGHT, REGULAR_WEIGHT, bold_prefix_length
+from halfbold.build import bold_prefix_length
 from halfbold.scan import Candidate, candidates_from_paths, read_font_info
+from halfbold.settings import BOLD_WEIGHT, REGULAR_WEIGHT
 
 SAMPLE_TEXT = (
     "The quick brown fox jumps over the lazy dog. Reading gets faster when "

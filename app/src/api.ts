@@ -19,12 +19,21 @@ export interface CaskEntry {
   google: boolean;
 }
 
+export interface Settings {
+  bold_share: number;
+  min_word_length: number;
+  max_word_length: number;
+  regular_weight: number;
+  bold_weight: number;
+}
+
 export interface Preview {
   family: string;
   kind: Kind;
   regular: string;
   bold: string | null;
   half: string;
+  settings: Settings;
 }
 
 export type WebFonts = Record<Kind, string>;
@@ -67,6 +76,11 @@ export function caskInstall(token: string) {
 
 export function webFonts(kind?: Kind, family?: string) {
   return kind && family ? api<WebFonts>("web", kind, family) : api<WebFonts>("web");
+}
+
+export function settings(values?: Partial<Settings>) {
+  const args = values ? ["settings", JSON.stringify(values)] : ["settings"];
+  return api<{ settings: Settings; defaults: Settings }>(...args);
 }
 
 export function readFont(path: string) {
