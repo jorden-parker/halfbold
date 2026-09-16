@@ -62,6 +62,24 @@ func scanFonts(dirs []string) ([]fontFile, error) {
 	return files, nil
 }
 
+func readFonts(paths []string) ([]fontFile, error) {
+	var files []fontFile
+	for _, path := range paths {
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			continue
+		}
+		font, ok, err := readFont(path)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			continue
+		}
+		files = append(files, font)
+	}
+	return files, nil
+}
+
 func readFont(path string) (fontFile, bool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
