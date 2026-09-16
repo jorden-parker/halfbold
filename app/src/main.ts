@@ -107,6 +107,8 @@ function filteredCasks(): CaskEntry[] {
 }
 
 function renderList() {
+  faceObserver?.disconnect();
+  visibleRows.clear();
   listEl.textContent = "";
   if (state.tab === "installed") {
     for (const c of filteredCandidates()) {
@@ -164,6 +166,9 @@ function renderList() {
       renderDetail();
     });
     listEl.append(li);
+    if (entry.google && !state.caskFaces.has(entry.token)) {
+      faceObserver?.observe(li);
+    }
   }
   if (entries.length > shown.length) {
     const more = document.createElement("li");
@@ -173,58 +178,69 @@ function renderList() {
   }
 }
 
-let faceLoaderConcurrency = 0;
 const MAX_CONCURRENT_FACES = 4;
+let facesInFlight = 0;
+const visibleRows = new Map<string, HTMLElement>();
+let faceObserver: IntersectionObserver | null = null;
 
 function setupFaceLoader() {
-  const observer = new IntersectionObserver(
+  faceObserver = new IntersectionObserver(
     (entries) => {
       for (const entry of entries) {
-        if (!entry.isIntersecting) continue;
         const li = entry.target as HTMLElement;
         const token = li.dataset.token;
         if (!token) continue;
-        const entry_obj = state.caskEntries?.find((e) => e.token === token);
-        if (!entry_obj?.google) continue;
-        if (state.caskFaces.has(token)) continue;
-        if (state.caskFacesPending.has(token)) continue;
-        if (faceLoaderConcurrency >= MAX_CONCURRENT_FACES) continue;
-
-        state.caskFacesPending.add(token);
-        faceLoaderConcurrency++;
-
-        void (async () => {
-          try {
-            const result = await caskFace(token);
-            if (result.face) {
-              const alias = await faceAlias(result.face);
-              state.caskFaces.set(token, alias);
-              const nameSpan = li.querySelector(".name") as HTMLElement | null;
-              if (nameSpan?.isConnected) {
-                nameSpan.style.fontFamily = alias;
-              }
-            } else {
-              state.caskFaces.set(token, null);
-            }
-          } catch {
-            state.caskFaces.set(token, null);
-          } finally {
-            state.caskFacesPending.delete(token);
-            faceLoaderConcurrency--;
-          }
-        })();
+        if (entry.isIntersecting) {
+          visibleRows.set(token, li);
+        } else if (visibleRows.get(token) === li) {
+          visibleRows.delete(token);
+        }
       }
+      pumpFaces();
     },
-    { root: listEl, rootMargin: "200px" }
+    { root: listEl, rootMargin: "200px" },
   );
+}
 
-  listEl.addEventListener("DOMNodeInserted", () => {
-    for (const li of listEl.querySelectorAll("li[data-token]")) {
-      observer.observe(li);
+function pumpFaces() {
+  for (const [token, li] of visibleRows) {
+    if (facesInFlight >= MAX_CONCURRENT_FACES) return;
+    if (state.caskFaces.has(token) || state.caskFacesPending.has(token)) continue;
+    const entry = state.caskEntries?.find((e) => e.token === token);
+    if (!entry?.google) {
+      visibleRows.delete(token);
+      continue;
     }
-  });
+    state.caskFacesPending.add(token);
+    facesInFlight++;
+    void loadCaskFace(token).finally(() => {
+      state.caskFacesPending.delete(token);
+      facesInFlight--;
+      visibleRows.delete(token);
+      faceObserver?.unobserve(li);
+      pumpFaces();
+    });
+  }
+}
 
-  return observer;
+async function loadCaskFace(token: string) {
+  try {
+    const result = await caskFace(token);
+    if (!result.face) {
+      state.caskFaces.set(token, null);
+      return;
+    }
+    const alias = await faceAlias(result.face);
+    state.caskFaces.set(token, alias);
+    const nameSpan = listEl.querySelector(
+      `li[data-token="${CSS.escape(token)}"] .name`,
+    ) as HTMLElement | null;
+    if (nameSpan) {
+      nameSpan.style.fontFamily = alias;
+    }
+  } catch {
+    state.caskFaces.set(token, null);
+  }
 }
 
 function clearSamples() {
