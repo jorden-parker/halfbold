@@ -1,0 +1,19 @@
+:root {
+  --halfbold-sans: "Inter Half";
+  --halfbold-serif: "Source Serif 4 Half";
+  --halfbold-mono: "JetBrainsMono Nerd Font Half";
+}
+
+*:not(pre):not(code):not(kbd):not(samp):not(textarea):not(i):not(.fa):not([class*="icon"]):not([class*="Icon"]) {
+  font-family: var(--halfbold-sans), sans-serif !important;
+}
+
+pre,
+code,
+kbd,
+samp,
+textarea,
+pre *,
+code * {
+  font-family: var(--halfbold-mono), monospace !important;
+}
