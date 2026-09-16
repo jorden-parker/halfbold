@@ -15,3 +15,7 @@ Edit `halfbold.css`: the three variables at the top name the installed font fami
 ## Limit to some sites
 
 Edit `matches` in `manifest.json`, e.g. `["https://*.wikipedia.org/*", "https://news.ycombinator.com/*"]`, then reload the extension.
+
+## Why the `text-rendering` rule
+
+Some sites (GitHub among them) set `text-rendering: optimizeSpeed`, which makes Chrome skip contextual alternates entirely, so the font renders plain. The extension forces `optimizeLegibility` and `calt` on everywhere.

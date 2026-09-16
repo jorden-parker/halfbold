@@ -4,6 +4,11 @@
   --halfbold-mono: "JetBrainsMono Nerd Font Half";
 }
 
+* {
+  text-rendering: optimizeLegibility !important;
+  font-feature-settings: "calt" 1 !important;
+}
+
 *:not(pre):not(code):not(kbd):not(samp):not(textarea):not(i):not(.fa):not([class*="icon"]):not([class*="Icon"]) {
   font-family: var(--halfbold-sans), sans-serif !important;
 }
