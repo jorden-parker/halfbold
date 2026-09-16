@@ -76,6 +76,24 @@ uv run halfbold ~/Library/Fonts/InterVariable.ttf -o ~/Library/Fonts/Inter-Half.
 
 Install the output, then turn on contextual alternates (`calt`) in the app. Most apps have it on by default. In CSS: `font-feature-settings: "calt"`.
 
+## App
+
+A small Tauri window that lists every convertible font, previews the real
+half-bold result next to the plain font, builds the Half twin, installs
+Homebrew font casks, and points the Chrome extension's sans/serif/mono slots
+at a family. It drives `halfbold-api` under the hood, so the Python package
+stays the only place with font logic.
+
+```sh
+cd app && pnpm install && pnpm tauri dev      # develop
+cd app && pnpm tauri build                    # app/src-tauri/target/release/bundle/macos/halfbold.app
+```
+
+Needs Rust (`brew install rustup && rustup toolchain install stable && rustup default stable`,
+then put `/opt/homebrew/opt/rustup/bin` on `PATH`), pnpm and `uv`. Set
+`HALFBOLD_REPO=/path/to/halfbold` if the built app is moved away from the
+repo checkout.
+
 ## Develop
 
 ```sh
