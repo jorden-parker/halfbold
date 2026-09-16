@@ -1,0 +1,26 @@
+package main
+
+import (
+	"reflect"
+	"testing"
+)
+
+func TestRunnerArgsVariable(t *testing.T) {
+	r := runner{project: "/repo"}
+	c := candidate{label: "Inter", regular: "/fonts/InterVariable.ttf"}
+	got := r.args(c, "/fonts/Inter-Half.ttf")
+	want := []string{"run", "--project", "/repo", "halfbold", "/fonts/InterVariable.ttf", "-o", "/fonts/Inter-Half.ttf"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+func TestRunnerArgsPair(t *testing.T) {
+	r := runner{project: "/repo"}
+	c := candidate{label: "Mono", regular: "/fonts/Mono-Regular.ttf", bold: "/fonts/Mono-Bold.ttf"}
+	got := r.args(c, "/fonts/Mono-Half.ttf")
+	want := []string{"run", "--project", "/repo", "halfbold", "/fonts/Mono-Regular.ttf", "/fonts/Mono-Bold.ttf", "-o", "/fonts/Mono-Half.ttf"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}

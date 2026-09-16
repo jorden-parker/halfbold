@@ -7,6 +7,16 @@ uv run halfbold Inter-Regular.ttf Inter-Bold.ttf -o Inter-Half.ttf
 uv run halfbold InterVariable.ttf -o ~/Library/Fonts/Inter-Half.ttf
 ```
 
+## Interactive picker
+
+A small Bubble Tea TUI lists the Regular + Bold pairs and variable TrueType fonts in `~/Library/Fonts` and runs `halfbold` on the one you pick:
+
+```sh
+go run -C tui . -project ..
+```
+
+`-fonts DIR` (repeatable) scans other directories; `-out-dir DIR` writes the `-Half.ttf` somewhere other than next to the source font.
+
 A single variable font is instanced at weight 400 and 700 (`--regular-weight`, `--bold-weight` to change). Output written into `~/Library/Fonts` is installed immediately on macOS.
 
 Fonts from Homebrew work directly:
@@ -25,4 +35,5 @@ uv sync
 git config core.hooksPath .githooks
 uv run pytest
 uv run ruff check . && uv run ruff format .
+go -C tui vet ./... && go -C tui test ./...
 ```
