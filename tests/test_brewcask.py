@@ -216,6 +216,10 @@ def test_cask_info_from_payload_matches_parse_cask_info():
     assert from_payload == from_parse
 
 
+def fonts(*names):
+    return [{"font": [n], "target": f"/x/{n.rsplit('/', 1)[-1]}"} for n in names]
+
+
 def test_font_cask_entries_names_and_google_flag():
     index = [
         {
@@ -223,21 +227,41 @@ def test_font_cask_entries_names_and_google_flag():
             "name": ["B Font"],
             "url": "https://github.com/google/fonts.git",
             "url_specs": {"only_path": "ofl/b"},
+            "artifacts": fonts("B[wght].ttf"),
         },
         {
             "token": "font-a",
             "name": [],
             "url": "https://x/a.zip",
+            "artifacts": fonts("a/A-Regular.ttf", "a/A-Bold.ttf", "a/A-Italic.ttf"),
         },
         {
             "token": "not-font",
             "name": ["X"],
+            "artifacts": fonts("X[wght].ttf"),
         },
     ]
     entries = font_cask_entries(index)
     assert len(entries) == 2
     assert entries[0] == {"token": "font-b", "name": "B Font", "google": True}
     assert entries[1] == {"token": "font-a", "name": "font-a", "google": False}
+
+
+def test_font_cask_entries_drops_casks_halfbold_cannot_convert():
+    index = [
+        {"token": "font-otf-only", "artifacts": fonts("Only.otf", "Only-Bold.otf")},
+        {"token": "font-regular-only", "artifacts": fonts("Lonely-Regular.ttf")},
+        {"token": "font-bold-only", "artifacts": fonts("Heavy-Bold.ttf")},
+        {"token": "font-italic-var", "artifacts": fonts("Slant-Italic[wght].ttf")},
+        {"token": "font-no-artifacts"},
+        {
+            "token": "font-plain-and-bold",
+            "artifacts": fonts("Plain.ttf", "PlainBold.ttf"),
+        },
+        {"token": "font-variable", "artifacts": fonts("Var-VF.ttf")},
+    ]
+    tokens = [e["token"] for e in font_cask_entries(index)]
+    assert tokens == ["font-plain-and-bold", "font-variable"]
 
 
 def test_fetch_cask_index_uses_fresh_cache(tmp_path, monkeypatch):

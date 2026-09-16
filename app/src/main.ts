@@ -21,7 +21,6 @@ const DEFAULT_SAMPLE_TEXT =
   "start of a word to recognise it.";
 const SAMPLE_TEXT_KEY = "halfbold.sampleText";
 const HALF_SUFFIX = " Half";
-const ARCHIVE_SETTLE_MS = 600;
 
 type Tab = "installed" | "brew";
 type Selection = { tab: "installed"; candidate: Candidate } | { tab: "brew"; token: string } | null;
@@ -227,7 +226,7 @@ function renderList() {
   }
   if (state.caskEntries) {
     listNoteEl.hidden = false;
-    listNoteEl.textContent = `${state.caskEntries.length} font casks. Google Fonts casks download on select; the rest fetch the whole cask archive.`;
+    listNoteEl.textContent = `${state.caskEntries.length} casks halfbold can convert. Google Fonts casks preview on select; the rest need a download first.`;
   }
 }
 
@@ -408,22 +407,27 @@ async function renderBrewDetail(token: string) {
   metaEl.textContent = `Homebrew cask ${token}`;
   actionsEl.textContent = "";
   actionsEl.append(makeButton("Install and build Half", () => onInstallCask(token), "primary"));
-  showPending(
-    entry?.google
-      ? "Downloading from Google Fonts…"
-      : "Fetching the whole cask archive. Large casks can take a minute.",
-  );
-
-  if (!entry?.google) {
-    await new Promise((resolve) => setTimeout(resolve, ARCHIVE_SETTLE_MS));
-    if (!stillSelected(selection)) return;
+  if (entry?.google || state.caskPrefetch.has(token)) {
+    showPending("Downloading from Google Fonts…");
+    await previewCask(token, selection);
+    return;
   }
+  showPending("This cask ships as an archive, so the preview is a download away.");
+  const download = makeButton("Download and preview", () => {
+    showPending("Fetching the cask archive. Large casks can take a minute.");
+    void previewCask(token, selection);
+  });
+  actionsEl.prepend(download);
+}
+
+async function previewCask(token: string, selection: Selection) {
   const result = await run(`Loading ${token}…`, () => caskFonts(token));
   if (!stillSelected(selection)) return;
   if (!result || result.candidates.length === 0) {
     showPending(result ? "No preview for this cask." : "Cannot convert this cask.");
     return;
   }
+  state.caskPrefetch.add(token);
   const first = result.candidates[0];
   metaEl.textContent = `Homebrew cask ${token}. ${result.candidates
     .map((c) => `${c.family} (${c.kind})`)

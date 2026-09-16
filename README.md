@@ -85,7 +85,11 @@ at a family. It drives `halfbold-api` under the hood, so the Python package
 stays the only place with font logic. Homebrew casks are listed by font name
 (from the Homebrew formulae index, cached for a day) and Google Fonts casks
 are drawn in their own face; other casks pick up their face after a preview
-or install. Selecting any row previews it straight away; the sample text is
+or install. The Homebrew list only shows casks halfbold can convert, judged
+from the font file names in the Homebrew index (TrueType, and either a
+variable font or a Regular plus Bold pair). Selecting an installed font or a
+Google Fonts cask previews it straight away; other casks show a "Download and
+preview" button because they ship as whole archives. The sample text is
 editable and remembered. Hovering a Google Fonts cask fetches it in the
 background, and every download lands in `~/Library/Caches/halfbold`, so a
 cask previews once per machine.

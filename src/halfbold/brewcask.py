@@ -84,11 +84,57 @@ def is_google_fonts_cask(cask: dict) -> bool:
     return cask.get("url") == GOOGLE_FONTS_GIT_URL and bool(url_specs.get("only_path"))
 
 
+ITALIC_MARKERS = ("italic", "oblique")
+VARIABLE_MARKERS = ("[", "variable", "-vf", "vf.")
+REGULAR_SUFFIXES = ("regular", "book", "roman", "normal", "medium")
+
+
+def artifact_font_files(cask: dict) -> list[str]:
+    files = []
+    for artifact in cask.get("artifacts") or []:
+        fonts = artifact.get("font") if isinstance(artifact, dict) else None
+        if isinstance(fonts, str):
+            fonts = [fonts]
+        for font in fonts or []:
+            files.append(font.rsplit("/", 1)[-1])
+    return files
+
+
+def _style_split(stem: str) -> tuple[str, str]:
+    lowered = stem.lower().replace("_", "-").replace(" ", "-")
+    if "-" in lowered:
+        base, style = lowered.rsplit("-", 1)
+        return base, style
+    for suffix in ("bold", *REGULAR_SUFFIXES):
+        if lowered.endswith(suffix) and len(lowered) > len(suffix):
+            return lowered[: -len(suffix)], suffix
+    return lowered, ""
+
+
+def cask_is_convertible(cask: dict) -> bool:
+    stems = []
+    for name in artifact_font_files(cask):
+        lowered = name.lower()
+        if not lowered.endswith(".ttf"):
+            continue
+        stem = lowered[: -len(".ttf")]
+        if any(marker in stem for marker in ITALIC_MARKERS):
+            continue
+        if any(marker in stem for marker in VARIABLE_MARKERS):
+            return True
+        stems.append(_style_split(stem))
+    bases_with_bold = {base for base, style in stems if style == "bold"}
+    for base, style in stems:
+        if base in bases_with_bold and style in ("", *REGULAR_SUFFIXES):
+            return True
+    return False
+
+
 def font_cask_entries(index: list[dict]) -> list[dict]:
     entries = []
     for cask in index:
         token = cask.get("token", "")
-        if not token.startswith(FONT_CASK_PREFIX):
+        if not token.startswith(FONT_CASK_PREFIX) or not cask_is_convertible(cask):
             continue
         names = cask.get("name") or []
         entries.append(

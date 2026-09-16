@@ -24,6 +24,17 @@
   type specimen app: the font is the hero, the chrome is quiet macOS-style
   (segmented control, sidebar, status bar).
 
+## Follow-ups from the maintainer's first GUI check (2026-09-16)
+
+- Non-Google casks no longer auto-fetch. They show a "Download and preview"
+  button; the archive fetch was what made rows "take ages".
+- The Homebrew list drops casks halfbold cannot convert, judged from the
+  artifact file names in the index (`cask_is_convertible`): TrueType only,
+  and a variable file or a Regular plus Bold pair, italics ignored. 2597
+  casks become 1026 (443 Google Fonts).
+- `cask-fonts` explains why nothing converts when the download still yields
+  no pair.
+
 ## What changed
 
 - `src/halfbold/api.py`: `serve` subcommand (threaded, id-matched replies),

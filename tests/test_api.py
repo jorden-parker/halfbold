@@ -224,11 +224,16 @@ def test_casks_returns_names_from_index(monkeypatch, capsys):
                 "name": ["Roboto"],
                 "url": "https://github.com/google/fonts.git",
                 "url_specs": {"only_path": "ofl/roboto"},
+                "artifacts": [{"font": ["Roboto[wdth,wght].ttf"]}],
             },
             {
                 "token": "font-noto",
                 "name": ["Noto Sans"],
                 "url": "https://x.zip",
+                "artifacts": [
+                    {"font": ["NotoSans-Regular.ttf"]},
+                    {"font": ["NotoSans-Bold.ttf"]},
+                ],
             },
             {
                 "token": "not-font",
