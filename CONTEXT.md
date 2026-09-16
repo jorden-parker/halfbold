@@ -35,6 +35,18 @@ _Avoid_: kind (that is the classification of a Candidate), active font
 The classification of a Candidate as sans, serif or mono.
 _Avoid_: category, class
 
+**Settings**:
+The one set of build choices applied to every Half font: Bold share, Shortest word, Plain and Bold weights, and the longest word that gets its own rule.
+_Avoid_: options, preferences, tuning (UI heading only)
+
+**Bold share**:
+The fraction of each word's letters drawn bold, counted from the start and rounded up, at least one letter.
+_Avoid_: boldness, amount, ratio
+
+**Shortest word**:
+The word length below which a word stays entirely plain.
+_Avoid_: skip, min length
+
 **Stale**:
 A Half font whose sources changed after it was built, so it needs a rebuild.
 _Avoid_: outdated (UI label only), dirty

@@ -65,7 +65,7 @@ scripts/install-watcher.sh
 
 Log: `~/Library/Logs/halfbold.log`. The script prints the removal command.
 
-A single variable font is instanced at weight 400 and 700 (`--regular-weight`, `--bold-weight` to change). Output written into `~/Library/Fonts` is installed immediately on macOS.
+A single variable font is instanced at weight 400 and 700 (`--regular-weight`, `--bold-weight` to change). `--bold-share 0.4` bolds fewer letters per word and `--min-word-length 4` leaves short words plain; without flags, both come from the saved settings file. Output written into `~/Library/Fonts` is installed immediately on macOS.
 
 Fonts from Homebrew work directly:
 
@@ -92,7 +92,11 @@ Google Fonts cask previews it straight away; other casks show a "Download and
 preview" button because they ship as whole archives. The sample text is
 editable and remembered. Hovering a Google Fonts cask fetches it in the
 background, and every download lands in `~/Library/Caches/halfbold`, so a
-cask previews once per machine.
+cask previews once per machine. Sliders above the specimen set the bold
+share, the shortest word that gets bolded and, for variable fonts, the plain
+and bold weights. They are saved to
+`~/Library/Application Support/halfbold/settings.json`, which the CLI and the
+launchd watcher read too, so every rebuild uses the same choices.
 
 ```sh
 cd app && bun install && bun tauri dev        # develop
@@ -119,7 +123,7 @@ go -C tui vet ./... && go -C tui test ./...
 
 `uv run halfbold-api <subcommand>` is the JSON interface the desktop app
 (`app/`) drives: `installed`, `build`, `preview`, `casks`, `cask-fonts`,
-`cask-face`, `cask-install`, `web`. Each prints one JSON object; failures print
+`cask-face`, `cask-install`, `settings`, `web`. Each prints one JSON object; failures print
 `{"error": …}` and exit 1. `serve` reads `{"id", "args"}` lines on stdin and
 answers each with `{"id", "ok", "result" | "error"}`, running requests
 concurrently.

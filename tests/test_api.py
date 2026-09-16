@@ -70,6 +70,40 @@ def test_preview_caches_half_in_cache_dir(
     assert Path(payload["half"]).stat().st_mtime != first_mtime
 
 
+def test_settings_command_saves_and_reports(monkeypatch, tmp_path: Path, capsys):
+    path = tmp_path / "settings.json"
+    monkeypatch.setattr("halfbold.settings.default_settings_path", lambda: path)
+
+    assert main(["settings", json.dumps({"bold_share": 0.4, "bold_weight": 800})]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["settings"]["bold_share"] == 0.4
+    assert payload["defaults"]["bold_share"] == 0.5
+
+    assert main(["settings"]) == 0
+    assert json.loads(capsys.readouterr().out)["settings"]["bold_weight"] == 800
+
+    assert main(["settings", json.dumps({"bold_share": 2})]) == 1
+    assert "bold_share" in json.loads(capsys.readouterr().out)["error"]
+
+
+def test_preview_cache_key_includes_settings(
+    font_pair, tmp_path: Path, capsys, monkeypatch
+):
+    regular, bold = font_pair
+    monkeypatch.setattr(api, "CACHE_DIR", tmp_path / "cache")
+    path = tmp_path / "settings.json"
+    monkeypatch.setattr("halfbold.settings.default_settings_path", lambda: path)
+
+    assert main(["preview", str(regular), str(bold)]) == 0
+    first = json.loads(capsys.readouterr().out)["half"]
+    assert main(["settings", json.dumps({"bold_share": 0.75})]) == 0
+    capsys.readouterr()
+    assert main(["preview", str(regular), str(bold)]) == 0
+    second = json.loads(capsys.readouterr().out)
+    assert second["half"] != first
+    assert second["settings"]["bold_share"] == 0.75
+
+
 def test_preview_rejects_non_font(tmp_path: Path, capsys):
     bad = tmp_path / "bad.ttf"
     bad.write_bytes(b"nope")

@@ -28,6 +28,7 @@ from halfbold.scan import (
     find_installed_half_families,
     read_font_info,
 )
+from halfbold.settings import Settings, load_settings, save_settings
 from halfbold.web import get_web_fonts, set_web_font
 
 
@@ -61,15 +62,21 @@ def candidate_from_files(regular: Path, bold: Path | None) -> Candidate:
     return Candidate(family, regular, bold, info.kind)
 
 
-def preview_half(candidate: Candidate, cache_dir: Path | None = None) -> Path:
+def preview_half(
+    candidate: Candidate,
+    settings: Settings | None = None,
+    cache_dir: Path | None = None,
+) -> Path:
+    settings = settings or load_settings()
     cache_dir = cache_dir or CACHE_DIR
     cache_dir.mkdir(parents=True, exist_ok=True)
-    half = cache_dir / candidate.output.name
+    stem = candidate.output.stem
+    half = cache_dir / f"{stem}.{settings.cache_tag()}{candidate.output.suffix}"
     if half.exists():
         built = half.stat().st_mtime
         if all(p.stat().st_mtime <= built for p in candidate.sources):
             return half
-    build_halfbold_font(candidate.regular, candidate.bold, half)
+    build_halfbold_font(candidate.regular, candidate.bold, half, settings)
     return half
 
 
@@ -82,18 +89,25 @@ def installed(args: argparse.Namespace) -> dict:
 
 def build(args: argparse.Namespace) -> dict:
     output = args.output or args.regular.with_name(f"{args.regular.stem}-Half.ttf")
-    letters = build_halfbold_font(args.regular, args.bold, output)
-    return {"output": str(output), "letters": len(letters)}
+    settings = load_settings()
+    letters = build_halfbold_font(args.regular, args.bold, output, settings)
+    return {
+        "output": str(output),
+        "letters": len(letters),
+        "settings": settings.as_dict(),
+    }
 
 
 def preview(args: argparse.Namespace) -> dict:
     candidate = candidate_from_files(args.regular, args.bold)
+    settings = load_settings()
     return {
         "family": candidate.family,
         "kind": candidate.kind,
         "regular": str(candidate.regular),
         "bold": None if candidate.bold is None else str(candidate.bold),
-        "half": str(preview_half(candidate)),
+        "half": str(preview_half(candidate, settings)),
+        "settings": settings.as_dict(),
     }
 
 
@@ -171,6 +185,14 @@ def cask_install(args: argparse.Namespace) -> dict:
     }
 
 
+def settings_command(args: argparse.Namespace) -> dict:
+    current = load_settings()
+    if args.values:
+        current = current.merged(json.loads(args.values))
+        save_settings(current)
+    return {"settings": current.as_dict(), "defaults": Settings().as_dict()}
+
+
 def web(args: argparse.Namespace) -> dict:
     if args.kind:
         family = args.family
@@ -225,6 +247,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     web_parser.add_argument("--css", type=Path, default=DEFAULT_CSS)
     web_parser.add_argument("--fonts-dir", type=Path, default=DEFAULT_FONTS_DIR)
     web_parser.set_defaults(handler=web)
+
+    settings_parser = subparsers.add_parser("settings")
+    settings_parser.add_argument("values", nargs="?")
+    settings_parser.set_defaults(handler=settings_command)
 
     serve_parser = subparsers.add_parser("serve")
     serve_parser.set_defaults(handler=None)

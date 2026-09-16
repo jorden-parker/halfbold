@@ -35,6 +35,23 @@
 - `cask-fonts` explains why nothing converts when the download still yields
   no pair.
 
+## Settings (maintainer request, 2026-09-16: "customization for amount of boldness, weight, skip")
+
+- New `halfbold.settings` module: `Settings(bold_share, min_word_length,
+  max_word_length, regular_weight, bold_weight)` saved as JSON in
+  `~/Library/Application Support/halfbold/settings.json`. The CLI, the
+  launchd watcher (`halfbold --all`) and the app all read it, so a rebuild
+  from any of them uses the same choices.
+- `build_halfbold_font` takes a `Settings`; `bold_prefix_length` takes the
+  share; the feature file stops at `min_word_length`.
+- `halfbold-api settings [JSON]` reads or merges and saves; `preview` and
+  `build` report the settings used, and the preview cache key includes them.
+- App: a "tuning" strip above the specimens with four sliders (bold share,
+  shortest word bolded, plain weight, bold weight). Weight sliders are
+  disabled for fixed Regular + Bold pairs. Changes save after 250 ms and
+  re-render the current preview. Build/Rebuild is always offered because
+  mtime-based staleness cannot see settings changes.
+
 ## What changed
 
 - `src/halfbold/api.py`: `serve` subcommand (threaded, id-matched replies),

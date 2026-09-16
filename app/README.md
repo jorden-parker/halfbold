@@ -1,8 +1,10 @@
 # halfbold app
 
 Tauri 2 window over `halfbold-api`. Frontend is plain TypeScript, bundled and
-served by Bun (`bun --port=1420 ./index.html` in dev, `bun build ./index.html`
-for release). No framework, no Vite.
+served by Bun (`dev.ts` runs `Bun.serve` pinned to 127.0.0.1:1420 with HMR in
+dev, `bun build ./index.html` for release). No framework, no Vite. The dev
+server is pinned to IPv4 because Tauri's `devUrl` is `http://127.0.0.1:1420`
+and a bare `localhost` bind can land on `::1`.
 
 ```sh
 bun install

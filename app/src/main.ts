@@ -7,10 +7,12 @@ import {
   installed,
   KINDS,
   preview,
+  settings as settingsApi,
   webFonts,
   type Candidate,
   type CaskEntry,
   type Kind,
+  type Settings,
   type WebFonts,
 } from "./api";
 import { faceAlias, loadFace } from "./fonts";
@@ -36,6 +38,9 @@ interface State {
   web: WebFonts | null;
   busy: string | null;
   sampleText: string;
+  settings: Settings | null;
+  defaults: Settings | null;
+  previewed: { key: string; candidate: Candidate } | null;
 }
 
 const state: State = {
@@ -49,6 +54,9 @@ const state: State = {
   web: null,
   busy: null,
   sampleText: loadSampleText(),
+  settings: null,
+  defaults: null,
+  previewed: null,
 };
 
 const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
@@ -68,6 +76,15 @@ const sampleHalfEl = $<HTMLParagraphElement>("#sample-half");
 const samplePlainEl = $<HTMLParagraphElement>("#sample-plain");
 const halfNoteEl = $<HTMLSpanElement>("#half-note");
 const resetSampleEl = $<HTMLButtonElement>("#reset-sample");
+const tuningEl = $<HTMLFormElement>("#tuning");
+const tuningNoteEl = $<HTMLSpanElement>("#tuning-note");
+const resetTuningEl = $<HTMLButtonElement>("#reset-tuning");
+const knobs: Record<keyof Omit<Settings, "max_word_length">, { input: HTMLInputElement; out: HTMLOutputElement }> = {
+  bold_share: { input: $("#knob-share"), out: $("#out-share") },
+  min_word_length: { input: $("#knob-min"), out: $("#out-min") },
+  regular_weight: { input: $("#knob-regular"), out: $("#out-regular") },
+  bold_weight: { input: $("#knob-bold"), out: $("#out-bold") },
+};
 
 function loadSampleText(): string {
   try {
@@ -313,8 +330,72 @@ function showPending(message: string) {
   halfNoteEl.textContent = "";
 }
 
+function knobValue(name: keyof typeof knobs, value: number): string {
+  if (name === "bold_share") return `${Math.round(value * 100)}%`;
+  if (name === "min_word_length") return `${value}`;
+  return `${Math.round(value)}`;
+}
+
+function renderTuning() {
+  if (!state.settings) return;
+  for (const [name, knob] of Object.entries(knobs) as [keyof typeof knobs, (typeof knobs)[keyof typeof knobs]][]) {
+    const value = state.settings[name];
+    knob.input.value = String(name === "bold_share" ? Math.round(value * 100) : value);
+    knob.out.value = knobValue(name, value);
+  }
+  const candidate = state.selected?.tab === "installed" ? state.selected.candidate : state.previewed?.candidate;
+  const variable = candidate ? candidate.bold === null : true;
+  for (const name of ["regular_weight", "bold_weight"] as const) {
+    knobs[name].input.disabled = !variable;
+    knobs[name].input.closest(".knob")?.classList.toggle("disabled", !variable);
+  }
+  tuningNoteEl.textContent = variable
+    ? "Applies to every font you build."
+    : "Weights only apply to variable fonts. This family ships fixed Regular and Bold files.";
+}
+
+let tuningTimer: ReturnType<typeof setTimeout> | null = null;
+
+function onTuningInput(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const name = input.name as keyof typeof knobs;
+  const raw = Number(input.value);
+  const value = name === "bold_share" ? raw / 100 : raw;
+  knobs[name].out.value = knobValue(name, value);
+  if (tuningTimer) clearTimeout(tuningTimer);
+  tuningTimer = setTimeout(() => void saveTuning({ [name]: value }), 250);
+}
+
+async function saveTuning(values: Partial<Settings>) {
+  const result = await run("Saving settings…", () => settingsApi(values));
+  if (!result) return;
+  state.settings = result.settings;
+  state.defaults = result.defaults;
+  renderTuning();
+  await refreshPreview();
+}
+
+async function refreshPreview() {
+  const selection = state.selected;
+  if (!selection) return;
+  if (selection.tab === "installed") {
+    renderInstalledActions(selection.candidate);
+    await previewCandidate(selection.candidate, selection);
+  } else if (state.previewed?.key === selectionKey(selection)) {
+    await previewCandidate(state.previewed.candidate, selection);
+  }
+}
+
+async function previewCandidate(c: Candidate, selection: Selection) {
+  const p = await run(`Previewing ${c.family}…`, () => preview(c));
+  if (!p || !stillSelected(selection)) return;
+  state.previewed = { key: selectionKey(selection), candidate: c };
+  renderTuning();
+  await renderSamples(p.regular, p.half, selection);
+}
+
 async function renderSamples(regular: string, half: string, selection: Selection) {
-  const [halfAlias, plainAlias] = await Promise.all([loadFace(half), loadFace(regular)]);
+  const [halfAlias, plainAlias] = await Promise.all([loadFace(half), faceAlias(regular)]);
   if (!stillSelected(selection)) return;
   sampleHalfEl.classList.remove("pending");
   sampleHalfEl.style.fontFamily = halfAlias;
@@ -350,9 +431,7 @@ function makeButton(label: string, onClick: () => void, className = ""): HTMLBut
 
 function renderInstalledActions(c: Candidate) {
   actionsEl.textContent = "";
-  if (!(c.built && !c.stale)) {
-    actionsEl.append(makeButton(c.built ? "Rebuild Half" : "Build Half", () => onBuild(c), "primary"));
-  }
+  actionsEl.append(makeButton(c.built ? "Rebuild Half" : "Build Half", () => onBuild(c), c.built && !c.stale ? "" : "primary"));
   for (const kind of KINDS) {
     const active = state.web?.[kind] === `${c.family}${HALF_SUFFIX}`;
     const button = makeButton(`Use as ${kind}`, () => onUseAs(kind, c), active ? "active" : "");
@@ -370,11 +449,9 @@ async function renderInstalledDetail(c: Candidate) {
   });
   metaEl.textContent = `${c.kind}, ${pairDescription(c)}. ${fileNames(c)}`;
   renderInstalledActions(c);
+  renderTuning();
   showPending("Preparing preview…");
-
-  const p = await run(`Previewing ${c.family}…`, () => preview(c));
-  if (!p || !stillSelected(selection)) return;
-  await renderSamples(p.regular, p.half, selection);
+  await previewCandidate(c, selection);
 }
 
 async function onBuild(c: Candidate) {
@@ -407,6 +484,7 @@ async function renderBrewDetail(token: string) {
   metaEl.textContent = `Homebrew cask ${token}`;
   actionsEl.textContent = "";
   actionsEl.append(makeButton("Install and build Half", () => onInstallCask(token), "primary"));
+  renderTuning();
   if (entry?.google || state.caskPrefetch.has(token)) {
     showPending("Downloading from Google Fonts…");
     await previewCask(token, selection);
@@ -436,9 +514,7 @@ async function previewCask(token: string, selection: Selection) {
   applyCaskFace(token, alias);
   if (!stillSelected(selection)) return;
   titleEl.style.fontFamily = alias;
-  const p = await run(`Previewing ${first.family}…`, () => preview(first));
-  if (!p || !stillSelected(selection)) return;
-  await renderSamples(p.regular, p.half, selection);
+  await previewCandidate(first, selection);
 }
 
 async function onInstallCask(token: string) {
@@ -517,6 +593,16 @@ function moveSelection(delta: number) {
   next.scrollIntoView({ block: "nearest" });
 }
 
+function setupTuning() {
+  for (const knob of Object.values(knobs)) {
+    knob.input.addEventListener("input", onTuningInput);
+  }
+  tuningEl.addEventListener("submit", (event) => event.preventDefault());
+  resetTuningEl.addEventListener("click", () => {
+    if (state.defaults) void saveTuning(state.defaults);
+  });
+}
+
 function setupSampleEditing() {
   sampleHalfEl.addEventListener("input", () => {
     const text = sampleHalfEl.textContent ?? "";
@@ -535,12 +621,13 @@ function setupSampleEditing() {
 function init() {
   setupFaceLoader();
   setupSampleEditing();
+  setupTuning();
   tabInstalledEl.addEventListener("click", () => selectTab("installed"));
   tabBrewEl.addEventListener("click", () => selectTab("brew"));
   filterEl.addEventListener("input", renderList);
 
   document.addEventListener("keydown", (event) => {
-    if (event.target === sampleHalfEl) return;
+    if (event.target === sampleHalfEl || event.target instanceof HTMLInputElement && event.target.type === "range") return;
     if (event.key === "/" && document.activeElement !== filterEl) {
       event.preventDefault();
       filterEl.focus();
@@ -560,13 +647,19 @@ function init() {
   });
 
   void (async () => {
-    const [installedResult, webResult] = await Promise.all([
+    const [installedResult, webResult, settingsResult] = await Promise.all([
       run("Loading fonts…", () => installed()),
       run("Loading slots…", () => webFonts()),
+      run("Loading settings…", () => settingsApi()),
     ]);
     if (installedResult) state.candidates = installedResult.candidates;
     if (webResult) state.web = webResult;
+    if (settingsResult) {
+      state.settings = settingsResult.settings;
+      state.defaults = settingsResult.defaults;
+    }
     renderSlots();
+    renderTuning();
     const first = state.candidates[0];
     state.selected = first ? { tab: "installed", candidate: first } : null;
     renderList();

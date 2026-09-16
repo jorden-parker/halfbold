@@ -3,15 +3,10 @@ import tempfile
 from pathlib import Path
 
 from halfbold.brewcask import cask_font_dir
-from halfbold.build import (
-    BOLD_WEIGHT,
-    MAX_WORD_LENGTH,
-    REGULAR_WEIGHT,
-    STYLE_SUFFIX,
-    build_halfbold_font,
-)
+from halfbold.build import STYLE_SUFFIX, build_halfbold_font
 from halfbold.preview import preview_candidates, preview_files
 from halfbold.scan import KINDS, build_all, find_installed_half_families
+from halfbold.settings import load_settings
 from halfbold.web import set_web_font
 
 DEFAULT_FONTS_DIR = Path.home() / "Library" / "Fonts"
@@ -82,22 +77,35 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             f"(default: {DEFAULT_CSS})"
         ),
     )
+    settings = load_settings()
+    parser.add_argument(
+        "--bold-share",
+        type=float,
+        default=settings.bold_share,
+        help="Share of each word to bold, 0 to 1 (default from settings)",
+    )
+    parser.add_argument(
+        "--min-word-length",
+        type=int,
+        default=settings.min_word_length,
+        help="Words shorter than this stay plain (default from settings)",
+    )
     parser.add_argument(
         "--regular-weight",
         type=float,
-        default=REGULAR_WEIGHT,
+        default=settings.regular_weight,
         help="wght value for the plain letters when instancing a variable font",
     )
     parser.add_argument(
         "--bold-weight",
         type=float,
-        default=BOLD_WEIGHT,
+        default=settings.bold_weight,
         help="wght value for the bold letters when instancing a variable font",
     )
     parser.add_argument(
         "--max-word-length",
         type=int,
-        default=MAX_WORD_LENGTH,
+        default=settings.max_word_length,
         help="Longest word that gets its own rule; longer words use this one",
     )
     parser.add_argument(
@@ -190,18 +198,22 @@ def main(argv: list[str] | None = None) -> int:
         for line in lines:
             print(line)
         return 0
+    settings = load_settings().merged(
+        {
+            "bold_share": args.bold_share,
+            "min_word_length": args.min_word_length,
+            "max_word_length": args.max_word_length,
+            "regular_weight": args.regular_weight,
+            "bold_weight": args.bold_weight,
+        }
+    )
     if args.all:
-        for line in build_all(args.fonts_dir, force=args.force, dry_run=args.dry_run):
+        for line in build_all(
+            args.fonts_dir, force=args.force, dry_run=args.dry_run, settings=settings
+        ):
             print(line)
         return 0
     output = args.output or args.regular.with_name(f"{args.regular.stem}-Half.ttf")
-    letters = build_halfbold_font(
-        args.regular,
-        args.bold,
-        output,
-        max_word_length=args.max_word_length,
-        regular_weight=args.regular_weight,
-        bold_weight=args.bold_weight,
-    )
+    letters = build_halfbold_font(args.regular, args.bold, output, settings)
     print(f"wrote {output} ({len(letters)} letter glyphs bolded)")
     return 0

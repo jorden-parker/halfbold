@@ -288,6 +288,50 @@ main {
   opacity: 0.45;
 }
 
+.tuning {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 28px;
+  margin: -8px 0 28px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--hover);
+}
+
+.knob {
+  display: grid;
+  grid-template-columns: auto 120px 3.5em;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.knob-name {
+  white-space: nowrap;
+}
+
+.knob input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.knob output {
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.knob.disabled {
+  opacity: 0.4;
+}
+
+.tuning-note {
+  font-size: 11px;
+  color: var(--faint);
+  margin-left: auto;
+}
+
 .specimens {
   display: flex;
   flex-direction: column;

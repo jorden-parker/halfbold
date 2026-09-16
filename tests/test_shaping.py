@@ -4,6 +4,7 @@ import uharfbuzz as hb
 from fontTools.ttLib import TTFont
 
 from halfbold.build import build_halfbold_font
+from halfbold.settings import Settings
 
 
 def shape(path: Path, text: str) -> str:
@@ -31,7 +32,7 @@ def test_words_longer_than_max_use_the_longest_rule(
 ):
     regular, bold = font_pair
     out = tmp_path / "Test-Half.ttf"
-    build_halfbold_font(regular, bold, out, max_word_length=4)
+    build_halfbold_font(regular, bold, out, Settings(max_word_length=4))
 
     glyphs = shape(out, "abcdef").split()
     assert glyphs == ["a.half", "b.half", "c", "d", "e", "f"]

@@ -34,6 +34,30 @@
             </div>
             <div id="actions"></div>
           </header>
+          <form id="tuning" class="tuning" autocomplete="off">
+            <label class="knob">
+              <span class="knob-name">Bold share</span>
+              <input id="knob-share" type="range" name="bold_share" min="10" max="100" step="5" />
+              <output id="out-share"></output>
+            </label>
+            <label class="knob">
+              <span class="knob-name">Shortest word bolded</span>
+              <input id="knob-min" type="range" name="min_word_length" min="1" max="8" step="1" />
+              <output id="out-min"></output>
+            </label>
+            <label class="knob knob-weight">
+              <span class="knob-name">Plain weight</span>
+              <input id="knob-regular" type="range" name="regular_weight" min="100" max="900" step="50" />
+              <output id="out-regular"></output>
+            </label>
+            <label class="knob knob-weight">
+              <span class="knob-name">Bold weight</span>
+              <input id="knob-bold" type="range" name="bold_weight" min="100" max="900" step="50" />
+              <output id="out-bold"></output>
+            </label>
+            <button id="reset-tuning" class="link" type="button">Reset</button>
+            <span id="tuning-note" class="tuning-note"></span>
+          </form>
           <div class="specimens">
             <div class="specimen">
               <div class="specimen-label"><span>Half bold</span><span id="half-note" class="specimen-note"></span></div>

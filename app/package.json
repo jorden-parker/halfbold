@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "bun --port=1420 ./index.html",
+    "dev": "bun run dev.ts",
     "build": "tsc && bun build ./index.html --outdir dist --minify",
     "tauri": "tauri"
   },
