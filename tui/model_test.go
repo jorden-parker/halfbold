@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -98,5 +99,35 @@ func TestPreviewDoneSuccessStaysOnList(t *testing.T) {
 	m2 := updated.(model)
 	if m2.screen != screenPick {
 		t.Fatalf("expected screenPick, got %v", m2.screen)
+	}
+}
+
+func TestPreviewKeyOnBrewListReturnsCmd(t *testing.T) {
+	m := newModel(nil, runner{project: "/repo"}, "", nil)
+	m.screen = screenBrewPick
+	m.brewList.SetItems([]list.Item{caskItem{token: "font-roboto"}})
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("p")})
+	m2 := updated.(model)
+	if m2.caskToken != "font-roboto" {
+		t.Fatalf("expected caskToken font-roboto, got %q", m2.caskToken)
+	}
+	if m2.screen != screenBrewPick {
+		t.Fatalf("expected screenBrewPick, got %v", m2.screen)
+	}
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd")
+	}
+}
+
+func TestPreviewKeyOnBrewListIgnoredWhileFiltering(t *testing.T) {
+	m := newModel(nil, runner{project: "/repo"}, "", nil)
+	m.screen = screenBrewPick
+	m.brewList.SetItems([]list.Item{caskItem{token: "font-roboto"}})
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+	m2 := updated.(model)
+	updated, _ = m2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("p")})
+	m3 := updated.(model)
+	if m3.caskToken != "" {
+		t.Fatalf("expected caskToken empty, got %q", m3.caskToken)
 	}
 }

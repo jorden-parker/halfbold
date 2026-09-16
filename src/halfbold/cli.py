@@ -1,6 +1,8 @@
 import argparse
+import tempfile
 from pathlib import Path
 
+from halfbold.brewcask import cask_font_dir
 from halfbold.build import (
     BOLD_WEIGHT,
     MAX_WORD_LENGTH,
@@ -114,6 +116,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="With --preview, keep the image until enter is pressed (used by the TUI)",
     )
+    parser.add_argument(
+        "--preview-cask",
+        metavar="TOKEN",
+        help="Download a Homebrew font cask without installing it and preview it",
+    )
     args = parser.parse_args(argv)
     args.web = {kind: getattr(args, kind) for kind in KINDS if getattr(args, kind)}
     if args.web and (args.all or args.regular is not None):
@@ -122,9 +129,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         )
     if args.preview and (args.all or args.web or args.regular is None):
         parser.error("--preview takes a font file or folder and no other mode")
-    if (args.png or args.wait) and not args.preview:
+    if args.preview_cask and (
+        args.all or args.web or args.preview or args.regular is not None
+    ):
+        parser.error("--preview-cask takes a cask token and no other mode")
+    if (args.png or args.wait) and not args.preview and not args.preview_cask:
         parser.error("--png and --wait need --preview")
-    if not args.web and not args.all and not args.preview and args.regular is None:
+    if (
+        not args.web
+        and not args.all
+        and not args.preview
+        and not args.preview_cask
+        and args.regular is None
+    ):
         parser.error(
             "give a font file, --all to scan the fonts folder, or --sans/--serif/--mono"
         )
@@ -158,6 +175,18 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as err:
             print(err)
             return 1
+        for line in lines:
+            print(line)
+        return 0
+    if args.preview_cask:
+        with tempfile.TemporaryDirectory(prefix="halfbold-cask-") as tmp:
+            try:
+                print(f"fetching {args.preview_cask} …", flush=True)
+                fonts_dir = cask_font_dir(args.preview_cask, Path(tmp))
+                lines = preview_candidates(fonts_dir, png=args.png, wait=args.wait)
+            except ValueError as err:
+                print(f"{args.preview_cask}: {err}")
+                return 1
         for line in lines:
             print(line)
         return 0

@@ -19,7 +19,7 @@ go run -C tui . -project ..
 
 Each row shows the font's kind (`sans`, `serif`, `mono`). Press `s` on a row to make its Half font the Chrome extension's font for that kind (`1`/`2`/`3` pick a different slot); this runs `halfbold --sans/--serif/--mono` and the extension reloads itself within 30 seconds.
 
-Press `p` to preview the highlighted font: the sample paragraph is drawn into the terminal half-bold and plain (see the `--preview` section below for terminal requirements); enter brings the picker back.
+Press `p` to preview the highlighted font: the sample paragraph is drawn into the terminal half-bold and plain (see the `--preview` section below for terminal requirements); enter brings the picker back. In the Homebrew list, `p` previews the cask before installing it (Google Fonts casks fetch only the needed files; other casks are downloaded to Homebrew's cache with `brew fetch`).
 
 Press `i` to install a font from a Homebrew cask (`brew search --cask font-`) without leaving the picker. After `brew install --cask` finishes, the new font is converted straight away; when a cask ships several families you pick one first.
 
@@ -49,7 +49,10 @@ is printed:
 uv run halfbold --preview ~/Library/Fonts/InterVariable.ttf
 uv run halfbold --preview ~/Library/Fonts            # every convertible font, up to three
 uv run halfbold --preview Inter-Regular.ttf Inter-Bold.ttf --png inter.png
+uv run halfbold --preview-cask font-roboto
 ```
+
+`--preview-cask TOKEN` downloads the cask without installing it.
 
 Inside tmux add `set -g allow-passthrough on` to `tmux.conf` (tmux ≥ 3.3)
 so the image reaches the terminal.

@@ -45,6 +45,15 @@ func TestRunnerPreviewArgsPair(t *testing.T) {
 	}
 }
 
+func TestRunnerPreviewCaskArgs(t *testing.T) {
+	r := runner{project: "/repo"}
+	got := r.previewCaskArgs("font-roboto")
+	want := []string{"run", "--project", "/repo", "halfbold", "--preview-cask", "font-roboto", "--wait"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
 func TestRunnerWebArgs(t *testing.T) {
 	r := runner{project: "/repo"}
 	got := r.webArgs("mono", "JetBrainsMono Nerd Font")

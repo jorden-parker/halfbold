@@ -39,6 +39,16 @@ func (r runner) preview(c candidate) tea.Cmd {
 	})
 }
 
+func (r runner) previewCaskArgs(token string) []string {
+	return []string{"run", "--project", r.project, "halfbold", "--preview-cask", token, "--wait"}
+}
+
+func (r runner) previewCask(token string) tea.Cmd {
+	return tea.ExecProcess(exec.Command("uv", r.previewCaskArgs(token)...), func(err error) tea.Msg {
+		return previewDoneMsg{err: err}
+	})
+}
+
 func (r runner) webArgs(kind, family string) []string {
 	return []string{"run", "--project", r.project, "halfbold", "--" + kind, family}
 }

@@ -148,7 +148,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.list.SetSize(msg.Width, msg.Height-3)
-		m.brewList.SetSize(msg.Width, msg.Height-2)
+		m.brewList.SetSize(msg.Width, msg.Height-3)
 		return m, nil
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -177,13 +177,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		case "p":
-			if (m.screen == screenPick || m.screen == screenCaskPick) && m.list.FilterState() != list.Filtering {
+			switch {
+			case (m.screen == screenPick || m.screen == screenCaskPick) && m.list.FilterState() != list.Filtering:
 				selected, ok := m.list.SelectedItem().(item)
 				if !ok {
 					return m, nil
 				}
 				m.chosen = selected.c
 				return m, m.runner.preview(selected.c)
+			case m.screen == screenBrewPick && m.brewList.FilterState() != list.Filtering:
+				selected, ok := m.brewList.SelectedItem().(caskItem)
+				if !ok {
+					return m, nil
+				}
+				m.caskToken = selected.token
+				return m, m.runner.previewCask(selected.token)
 			}
 		case "1", "2", "3":
 			if m.screen == screenSlotPick {
@@ -333,7 +341,7 @@ func (m model) View() string {
 	case screenBrewInstalling:
 		return fmt.Sprintf("%s brew install --cask %s …\n", m.spinner.View(), m.caskToken)
 	case screenBrewPick:
-		return m.brewList.View()
+		return m.brewList.View() + "\n" + helpStyle.Render("enter: install  p: preview  /: filter  esc: back  q: quit")
 	case screenCaskPick:
 		return m.list.View()
 	case screenSlotPick:
