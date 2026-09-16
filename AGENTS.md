@@ -18,3 +18,17 @@ Personal Python CLI. Takes a Regular and a Bold TrueType font of the same family
 - Commit messages are Conventional Commits (`feat:`, `fix:`, `chore:`). The `commit-msg` hook rejects anything else.
 - Hooks live in `.githooks/`; run `git config core.hooksPath .githooks` after a fresh clone.
 - Only TrueType (`glyf`) fonts are supported. CFF/OTF raises a clear error.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs are local markdown files under `.scratch/<feature-slug>/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default triage labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`), recorded as a `Status:` line in each issue file. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
