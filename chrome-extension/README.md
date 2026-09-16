@@ -19,3 +19,7 @@ Edit `matches` in `manifest.json`, e.g. `["https://*.wikipedia.org/*", "https://
 ## Why the `text-rendering` rule
 
 Some sites (GitHub among them) set `text-rendering: optimizeSpeed`, which makes Chrome skip contextual alternates entirely, so the font renders plain. The extension forces `optimizeLegibility` and `calt` on everywhere.
+
+## Shadow DOM
+
+Some sites render code blocks inside shadow roots (MDN's `<mdn-code-example>`, for one), where page CSS never reaches. `shadow.js` adopts the same stylesheet into every open shadow root it finds, and keeps watching for new ones. Closed shadow roots stay out of reach.

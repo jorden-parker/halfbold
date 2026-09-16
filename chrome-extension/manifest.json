@@ -1,13 +1,21 @@
 {
   "manifest_version": 3,
   "name": "halfbold",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Render every website in a locally installed half-bold reading font",
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
       "css": ["halfbold.css"],
-      "run_at": "document_start"
+      "js": ["shadow.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["halfbold.css"],
+      "matches": ["<all_urls>"]
     }
   ]
 }
