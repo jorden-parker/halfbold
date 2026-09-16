@@ -1,3 +1,4 @@
+import io
 import json
 import os
 from pathlib import Path
@@ -98,6 +99,49 @@ def test_cask_fonts_downloads_into_cache(monkeypatch, tmp_path: Path, capsys):
     assert payload["token"] == "font-test"
     assert len(payload["candidates"]) == 1
     assert payload["candidates"][0]["family"] == "Test"
+
+
+def test_cask_fonts_reuses_downloaded_fonts(monkeypatch, tmp_path: Path, capsys):
+    cache_dir = tmp_path / "cache"
+    monkeypatch.setattr(api, "CACHE_DIR", cache_dir)
+    downloads = []
+
+    def fake_cask_font_dir(token, into):
+        downloads.append(token)
+        make_font(into / "Test-Regular.ttf", "Test", "Regular", 100)
+        make_font(into / "Test-Bold.ttf", "Test", "Bold", 200)
+        return into
+
+    monkeypatch.setattr(api, "cask_font_dir", fake_cask_font_dir)
+
+    assert main(["cask-fonts", "font-test"]) == 0
+    assert main(["cask-fonts", "font-test"]) == 0
+
+    assert downloads == ["font-test"]
+    payloads = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert payloads[0] == payloads[1]
+
+
+def test_serve_answers_requests_by_id(tmp_path: Path):
+    fonts = tmp_path / "fonts"
+    fill_fonts_dir(fonts)
+    requests = [
+        {"id": 1, "args": ["installed", "--fonts-dir", str(fonts)]},
+        {"id": 2, "args": ["preview", str(tmp_path / "missing.ttf")]},
+        {"id": 3, "args": ["serve"]},
+    ]
+    stdin = io.StringIO("\n".join(json.dumps(r) for r in requests) + "\n")
+    stdout = io.StringIO()
+
+    assert api.serve(stdin, stdout) == 0
+
+    replies = {r["id"]: r for r in map(json.loads, stdout.getvalue().splitlines())}
+    assert replies[1]["ok"] is True
+    families = sorted(c["family"] for c in replies[1]["result"]["candidates"])
+    assert families == ["Pair", "Var"]
+    assert replies[2]["ok"] is False
+    assert "missing.ttf" in replies[2]["error"]
+    assert replies[3] == {"id": 3, "ok": False, "error": "serve cannot be nested"}
 
 
 def test_cask_install_returns_installed_candidates(monkeypatch, tmp_path: Path, capsys):

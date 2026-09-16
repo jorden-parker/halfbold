@@ -5,6 +5,7 @@ import {
   caskInstall,
   casks,
   installed,
+  KINDS,
   preview,
   webFonts,
   type Candidate,
@@ -14,10 +15,12 @@ import {
 } from "./api";
 import { faceAlias, loadFace } from "./fonts";
 
-const SAMPLE_TEXT =
+const DEFAULT_SAMPLE_TEXT =
   "The quick brown fox jumps over the lazy dog. Reading gets faster when " +
   "the first half of every word is bold, because your eyes only need the " +
   "start of a word to recognise it.";
+const SAMPLE_TEXT_KEY = "halfbold.sampleText";
+const HALF_SUFFIX = " Half";
 
 type Tab = "installed" | "brew";
 type Selection = { tab: "installed"; candidate: Candidate } | { tab: "brew"; token: string } | null;
@@ -28,9 +31,11 @@ interface State {
   caskEntries: CaskEntry[] | null;
   caskFaces: Map<string, string | null>;
   caskFacesPending: Set<string>;
+  caskPrefetch: Set<string>;
   selected: Selection;
   web: WebFonts | null;
   busy: string | null;
+  sampleText: string;
 }
 
 const state: State = {
@@ -39,37 +44,60 @@ const state: State = {
   caskEntries: null,
   caskFaces: new Map(),
   caskFacesPending: new Set(),
+  caskPrefetch: new Set(),
   selected: null,
   web: null,
   busy: null,
+  sampleText: loadSampleText(),
 };
 
-const tabInstalledEl = document.querySelector<HTMLButtonElement>("#tab-installed")!;
-const tabBrewEl = document.querySelector<HTMLButtonElement>("#tab-brew")!;
-const slotsEl = document.querySelector<HTMLDivElement>("#slots")!;
-const filterEl = document.querySelector<HTMLInputElement>("#filter")!;
-const listEl = document.querySelector<HTMLUListElement>("#list")!;
-const emptyEl = document.querySelector<HTMLParagraphElement>("#empty")!;
-const panelEl = document.querySelector<HTMLDivElement>("#panel")!;
-const titleEl = document.querySelector<HTMLHeadingElement>("#title")!;
-const metaEl = document.querySelector<HTMLParagraphElement>("#meta")!;
-const actionsEl = document.querySelector<HTMLDivElement>("#actions")!;
-const statusEl = document.querySelector<HTMLParagraphElement>("#status")!;
-const sampleHalfEl = document.querySelector<HTMLParagraphElement>("#sample-half")!;
-const samplePlainEl = document.querySelector<HTMLParagraphElement>("#sample-plain")!;
-const headingHalfEl = document.querySelector<HTMLHeadingElement>("#heading-half")!;
-const headingPlainEl = document.querySelector<HTMLHeadingElement>("#heading-plain")!;
+const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
+const tabInstalledEl = $<HTMLButtonElement>("#tab-installed");
+const tabBrewEl = $<HTMLButtonElement>("#tab-brew");
+const slotsEl = $<HTMLSpanElement>("#slots");
+const filterEl = $<HTMLInputElement>("#filter");
+const listEl = $<HTMLUListElement>("#list");
+const listNoteEl = $<HTMLDivElement>("#list-note");
+const emptyEl = $<HTMLDivElement>("#empty");
+const panelEl = $<HTMLDivElement>("#panel");
+const titleEl = $<HTMLHeadingElement>("#title");
+const metaEl = $<HTMLParagraphElement>("#meta");
+const actionsEl = $<HTMLDivElement>("#actions");
+const statusEl = $<HTMLSpanElement>("#status");
+const sampleHalfEl = $<HTMLParagraphElement>("#sample-half");
+const samplePlainEl = $<HTMLParagraphElement>("#sample-plain");
+const halfNoteEl = $<HTMLSpanElement>("#half-note");
+const resetSampleEl = $<HTMLButtonElement>("#reset-sample");
+
+function loadSampleText(): string {
+  try {
+    return localStorage.getItem(SAMPLE_TEXT_KEY) || DEFAULT_SAMPLE_TEXT;
+  } catch {
+    return DEFAULT_SAMPLE_TEXT;
+  }
+}
+
+function saveSampleText(text: string) {
+  state.sampleText = text;
+  try {
+    localStorage.setItem(SAMPLE_TEXT_KEY, text);
+  } catch {
+    return;
+  }
+}
 
 function setBusy(label: string | null) {
   state.busy = label;
+  statusEl.classList.remove("error");
   statusEl.textContent = label ?? "";
   for (const button of actionsEl.querySelectorAll("button")) {
-    button.disabled = label !== null;
+    button.disabled = label !== null || button.dataset.locked === "true";
   }
 }
 
 function showError(message: string) {
-  statusEl.textContent = `Error: ${message}`;
+  statusEl.classList.add("error");
+  statusEl.textContent = message;
 }
 
 async function run<T>(label: string, task: () => Promise<T>): Promise<T | null> {
@@ -85,12 +113,31 @@ async function run<T>(label: string, task: () => Promise<T>): Promise<T | null> 
   }
 }
 
+function selectionKey(selection: Selection): string {
+  if (!selection) return "";
+  return selection.tab === "installed"
+    ? `installed:${selection.candidate.regular}`
+    : `brew:${selection.token}`;
+}
+
+function stillSelected(selection: Selection): boolean {
+  return selectionKey(selection) === selectionKey(state.selected);
+}
+
 function renderSlots() {
-  if (!state.web) {
-    slotsEl.textContent = "";
-    return;
+  slotsEl.textContent = "";
+  if (!state.web) return;
+  for (const kind of KINDS) {
+    const span = document.createElement("span");
+    const label = document.createElement("b");
+    label.textContent = kind;
+    span.append(label, ` ${stripHalf(state.web[kind])}`);
+    slotsEl.append(span);
   }
-  slotsEl.textContent = `sans: ${state.web.sans} · serif: ${state.web.serif} · mono: ${state.web.mono}`;
+}
+
+function stripHalf(family: string): string {
+  return family.endsWith(HALF_SUFFIX) ? family.slice(0, -HALF_SUFFIX.length) : family;
 }
 
 function filteredCandidates(): Candidate[] {
@@ -106,13 +153,22 @@ function filteredCasks(): CaskEntry[] {
   return entries.filter((e) => e.name.toLowerCase().includes(query) || e.token.toLowerCase().includes(query));
 }
 
+function select(selection: Selection) {
+  if (stillSelected(selection) && selection !== null) return;
+  state.selected = selection;
+  renderList();
+  void renderDetail();
+}
+
 function renderList() {
   faceObserver?.disconnect();
   visibleRows.clear();
   listEl.textContent = "";
+  listNoteEl.hidden = true;
   if (state.tab === "installed") {
     for (const c of filteredCandidates()) {
       const li = document.createElement("li");
+      li.setAttribute("role", "option");
       const nameSpan = document.createElement("span");
       nameSpan.className = "name";
       nameSpan.textContent = c.family;
@@ -120,21 +176,15 @@ function renderList() {
       kindSpan.className = "kind";
       kindSpan.textContent = c.kind;
       const stateSpan = document.createElement("span");
-      stateSpan.className = "state";
-      stateSpan.textContent = c.built ? (c.stale ? "stale" : "built") : "not built";
+      stateSpan.className = `state ${c.built ? (c.stale ? "stale" : "built") : ""}`;
+      stateSpan.textContent = c.built ? (c.stale ? "outdated" : "Half") : "";
       li.append(nameSpan, kindSpan, stateSpan);
-      if (state.selected?.tab === "installed" && state.selected.candidate === c) {
+      if (state.selected?.tab === "installed" && state.selected.candidate.regular === c.regular) {
         li.classList.add("selected");
       }
-      li.addEventListener("click", () => {
-        state.selected = { tab: "installed", candidate: c };
-        renderList();
-        renderDetail();
-      });
+      li.addEventListener("click", () => select({ tab: "installed", candidate: c }));
       void faceAlias(c.regular).then((alias) => {
-        if (nameSpan.isConnected) {
-          nameSpan.style.fontFamily = alias;
-        }
+        if (nameSpan.isConnected) nameSpan.style.fontFamily = alias;
       });
       listEl.append(li);
     }
@@ -145,26 +195,24 @@ function renderList() {
   const shown = entries.slice(0, 200);
   for (const entry of shown) {
     const li = document.createElement("li");
+    li.setAttribute("role", "option");
     li.dataset.token = entry.token;
     const nameSpan = document.createElement("span");
     nameSpan.className = "name";
     nameSpan.textContent = entry.name;
     const alias = state.caskFaces.get(entry.token);
-    if (alias) {
-      nameSpan.style.fontFamily = alias;
-    }
+    if (alias) nameSpan.style.fontFamily = alias;
     const tokenSpan = document.createElement("span");
     tokenSpan.className = "token";
-    tokenSpan.textContent = entry.token;
+    tokenSpan.textContent = entry.google ? "Google Fonts" : "";
     li.append(nameSpan, tokenSpan);
     if (state.selected?.tab === "brew" && state.selected.token === entry.token) {
       li.classList.add("selected");
     }
-    li.addEventListener("click", () => {
-      state.selected = { tab: "brew", token: entry.token };
-      renderList();
-      renderDetail();
-    });
+    li.addEventListener("click", () => select({ tab: "brew", token: entry.token }));
+    if (entry.google) {
+      li.addEventListener("mouseenter", () => prefetchCask(entry.token));
+    }
     listEl.append(li);
     if (entry.google && !state.caskFaces.has(entry.token)) {
       faceObserver?.observe(li);
@@ -173,9 +221,19 @@ function renderList() {
   if (entries.length > shown.length) {
     const more = document.createElement("li");
     more.className = "more";
-    more.textContent = `… and ${entries.length - shown.length} more`;
+    more.textContent = `${entries.length - shown.length} more match. Narrow the search.`;
     listEl.append(more);
   }
+  if (state.caskEntries) {
+    listNoteEl.hidden = false;
+    listNoteEl.textContent = `${state.caskEntries.length} font casks. Google Fonts casks download on select; the rest fetch the whole cask archive.`;
+  }
+}
+
+function prefetchCask(token: string) {
+  if (state.caskPrefetch.has(token)) return;
+  state.caskPrefetch.add(token);
+  void caskFonts(token).catch(() => state.caskPrefetch.delete(token));
 }
 
 const MAX_CONCURRENT_FACES = 4;
@@ -223,6 +281,12 @@ function pumpFaces() {
   }
 }
 
+function applyCaskFace(token: string, alias: string) {
+  state.caskFaces.set(token, alias);
+  const nameSpan = listEl.querySelector(`li[data-token="${CSS.escape(token)}"] .name`) as HTMLElement | null;
+  if (nameSpan) nameSpan.style.fontFamily = alias;
+}
+
 async function loadCaskFace(token: string) {
   try {
     const result = await caskFace(token);
@@ -230,89 +294,99 @@ async function loadCaskFace(token: string) {
       state.caskFaces.set(token, null);
       return;
     }
-    const alias = await faceAlias(result.face);
-    state.caskFaces.set(token, alias);
-    const nameSpan = listEl.querySelector(
-      `li[data-token="${CSS.escape(token)}"] .name`,
-    ) as HTMLElement | null;
-    if (nameSpan) {
-      nameSpan.style.fontFamily = alias;
-    }
+    applyCaskFace(token, await faceAlias(result.face));
   } catch {
     state.caskFaces.set(token, null);
   }
 }
 
-function clearSamples() {
-  sampleHalfEl.textContent = "";
-  sampleHalfEl.style.fontFamily = "";
-  sampleHalfEl.style.fontFeatureSettings = "";
-  headingHalfEl.hidden = true;
-
-  samplePlainEl.textContent = "";
-  samplePlainEl.style.fontFamily = "";
-  samplePlainEl.style.fontWeight = "";
-  headingPlainEl.hidden = true;
+function showPending(message: string) {
+  for (const el of [sampleHalfEl, samplePlainEl]) {
+    el.classList.add("pending");
+    el.style.fontFamily = "";
+    el.style.fontFeatureSettings = "";
+    el.style.fontWeight = "";
+    el.textContent = "";
+  }
+  sampleHalfEl.textContent = message;
+  sampleHalfEl.contentEditable = "false";
+  halfNoteEl.textContent = "";
 }
 
-async function renderSamples(regular: string, half: string) {
-  const halfAlias = await loadFace(half);
+async function renderSamples(regular: string, half: string, selection: Selection) {
+  const [halfAlias, plainAlias] = await Promise.all([loadFace(half), loadFace(regular)]);
+  if (!stillSelected(selection)) return;
+  sampleHalfEl.classList.remove("pending");
   sampleHalfEl.style.fontFamily = halfAlias;
   sampleHalfEl.style.fontFeatureSettings = '"calt" 1';
-  sampleHalfEl.textContent = SAMPLE_TEXT;
-  headingHalfEl.hidden = false;
+  sampleHalfEl.textContent = state.sampleText;
+  sampleHalfEl.contentEditable = "plaintext-only";
+  halfNoteEl.textContent = "click to edit the text";
 
-  const plainAlias = await loadFace(regular);
+  samplePlainEl.classList.remove("pending");
   samplePlainEl.style.fontFamily = plainAlias;
   samplePlainEl.style.fontWeight = "400";
-  samplePlainEl.textContent = SAMPLE_TEXT;
-  headingPlainEl.hidden = false;
+  samplePlainEl.textContent = state.sampleText;
 }
 
 function pairDescription(c: Candidate): string {
-  return c.bold ? "Regular + Bold pair" : "variable font";
+  return c.bold ? "Regular and Bold pair" : "variable font";
 }
 
 function fileNames(c: Candidate): string {
-  const names = [c.regular, c.bold].filter((p): p is string => Boolean(p)).map((p) => p.split("/").pop());
-  return names.join(", ");
+  return [c.regular, c.bold]
+    .filter((p): p is string => Boolean(p))
+    .map((p) => p.split("/").pop())
+    .join(", ");
+}
+
+function makeButton(label: string, onClick: () => void, className = ""): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.textContent = label;
+  button.className = className;
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function renderInstalledActions(c: Candidate) {
+  actionsEl.textContent = "";
+  if (!(c.built && !c.stale)) {
+    actionsEl.append(makeButton(c.built ? "Rebuild Half" : "Build Half", () => onBuild(c), "primary"));
+  }
+  for (const kind of KINDS) {
+    const active = state.web?.[kind] === `${c.family}${HALF_SUFFIX}`;
+    const button = makeButton(`Use as ${kind}`, () => onUseAs(kind, c), active ? "active" : "");
+    button.disabled = !c.built;
+    button.dataset.locked = String(!c.built);
+    actionsEl.append(button);
+  }
 }
 
 async function renderInstalledDetail(c: Candidate) {
-  clearSamples();
+  const selection: Selection = { tab: "installed", candidate: c };
   titleEl.textContent = c.family;
-  metaEl.textContent = `${c.kind} · ${pairDescription(c)} · ${fileNames(c)}`;
-  actionsEl.textContent = "";
-
-  if (!(c.built && !c.stale)) {
-    const buildButton = document.createElement("button");
-    buildButton.textContent = c.built && c.stale ? "Rebuild" : "Build Half font";
-    buildButton.addEventListener("click", () => onBuild(c));
-    actionsEl.append(buildButton);
-  }
-
-  for (const kind of ["sans", "serif", "mono"] as Kind[]) {
-    const button = document.createElement("button");
-    button.textContent = `Use as ${kind}`;
-    button.disabled = !c.built;
-    button.addEventListener("click", () => onUseAs(kind, c));
-    actionsEl.append(button);
-  }
+  void faceAlias(c.regular).then((alias) => {
+    if (stillSelected(selection)) titleEl.style.fontFamily = alias;
+  });
+  metaEl.textContent = `${c.kind}, ${pairDescription(c)}. ${fileNames(c)}`;
+  renderInstalledActions(c);
+  showPending("Preparing preview…");
 
   const p = await run(`Previewing ${c.family}…`, () => preview(c));
-  if (!p) return;
-  await renderSamples(p.regular, p.half);
+  if (!p || !stillSelected(selection)) return;
+  await renderSamples(p.regular, p.half, selection);
 }
 
 async function onBuild(c: Candidate) {
   const result = await run(`Building ${c.family} Half…`, () => build(c));
   if (!result) return;
   await reloadInstalled();
-  const updated = state.candidates.find((x) => x.family === c.family && x.kind === c.kind);
+  const updated = state.candidates.find((x) => x.regular === c.regular);
   if (updated) {
     state.selected = { tab: "installed", candidate: updated };
     renderList();
-    await renderInstalledDetail(updated);
+    renderInstalledActions(updated);
+    statusEl.textContent = `Built ${updated.family} Half.`;
   }
 }
 
@@ -321,35 +395,37 @@ async function onUseAs(kind: Kind, c: Candidate) {
   if (!result) return;
   state.web = result;
   renderSlots();
+  renderInstalledActions(c);
+  statusEl.textContent = `${c.family} Half is now the ${kind} font.`;
 }
 
 async function renderBrewDetail(token: string) {
-  clearSamples();
+  const selection: Selection = { tab: "brew", token };
   const entry = state.caskEntries?.find((e) => e.token === token);
   titleEl.textContent = entry?.name ?? token;
-  metaEl.textContent = token;
+  titleEl.style.fontFamily = state.caskFaces.get(token) ?? "";
+  metaEl.textContent = `Homebrew cask ${token}`;
   actionsEl.textContent = "";
+  actionsEl.append(makeButton("Install and build Half", () => onInstallCask(token), "primary"));
+  showPending(entry?.google ? "Downloading from Google Fonts…" : "Fetching the cask archive…");
 
-  const previewButton = document.createElement("button");
-  previewButton.textContent = "Preview";
-  previewButton.addEventListener("click", () => onPreviewCask(token));
-  const installButton = document.createElement("button");
-  installButton.textContent = "Install";
-  installButton.addEventListener("click", () => onInstallCask(token));
-  actionsEl.append(previewButton, installButton);
-}
-
-async function onPreviewCask(token: string) {
   const result = await run(`Loading ${token}…`, () => caskFonts(token));
-  if (!result || result.candidates.length === 0) return;
+  if (!stillSelected(selection)) return;
+  if (!result || result.candidates.length === 0) {
+    showPending("No preview for this cask.");
+    return;
+  }
   const first = result.candidates[0];
-  metaEl.textContent = result.candidates.map((c) => `${c.family} (${c.kind})`).join(" · ");
+  metaEl.textContent = `Homebrew cask ${token}. ${result.candidates
+    .map((c) => `${c.family} (${c.kind})`)
+    .join(", ")}`;
   const alias = await faceAlias(first.regular);
-  state.caskFaces.set(token, alias);
-  renderList();
+  applyCaskFace(token, alias);
+  if (!stillSelected(selection)) return;
+  titleEl.style.fontFamily = alias;
   const p = await run(`Previewing ${first.family}…`, () => preview(first));
-  if (!p) return;
-  await renderSamples(p.regular, p.half);
+  if (!p || !stillSelected(selection)) return;
+  await renderSamples(p.regular, p.half, selection);
 }
 
 async function onInstallCask(token: string) {
@@ -359,20 +435,14 @@ async function onInstallCask(token: string) {
     await run(`Building ${c.family} Half…`, () => build(c));
   }
   const first = installResult.candidates[0];
-  if (first) {
-    const alias = await faceAlias(first.regular);
-    state.caskFaces.set(token, alias);
-  }
+  if (first) applyCaskFace(token, await faceAlias(first.regular));
   await reloadInstalled();
   state.tab = "installed";
-  tabInstalledEl.classList.add("active");
-  tabBrewEl.classList.remove("active");
-  const selected = first
-    ? state.candidates.find((x) => x.family === first.family && x.kind === first.kind)
-    : undefined;
+  renderTabs();
+  const selected = first ? state.candidates.find((x) => x.regular === first.regular) : undefined;
   state.selected = selected ? { tab: "installed", candidate: selected } : null;
   renderList();
-  if (selected) await renderInstalledDetail(selected);
+  await renderDetail();
 }
 
 async function renderDetail() {
@@ -403,13 +473,24 @@ async function ensureCasks() {
   renderList();
 }
 
+function renderTabs() {
+  for (const [el, tab] of [
+    [tabInstalledEl, "installed"],
+    [tabBrewEl, "brew"],
+  ] as const) {
+    const active = state.tab === tab;
+    el.classList.toggle("active", active);
+    el.setAttribute("aria-selected", String(active));
+  }
+}
+
 function selectTab(tab: Tab) {
+  if (state.tab === tab) return;
   state.tab = tab;
-  tabInstalledEl.classList.toggle("active", tab === "installed");
-  tabBrewEl.classList.toggle("active", tab === "brew");
+  renderTabs();
   state.selected = null;
   renderList();
-  renderDetail();
+  void renderDetail();
   if (tab === "brew") void ensureCasks();
 }
 
@@ -418,31 +499,50 @@ function moveSelection(delta: number) {
   if (items.length === 0) return;
   const currentIndex = items.findIndex((el) => el.classList.contains("selected"));
   const nextIndex = Math.min(Math.max(currentIndex + delta, 0), items.length - 1);
-  (items[nextIndex] as HTMLElement).click();
+  const next = items[nextIndex] as HTMLElement;
+  next.click();
+  next.scrollIntoView({ block: "nearest" });
+}
+
+function setupSampleEditing() {
+  sampleHalfEl.addEventListener("input", () => {
+    const text = sampleHalfEl.textContent ?? "";
+    saveSampleText(text);
+    samplePlainEl.textContent = text;
+  });
+  resetSampleEl.addEventListener("click", () => {
+    saveSampleText(DEFAULT_SAMPLE_TEXT);
+    if (!sampleHalfEl.classList.contains("pending")) {
+      sampleHalfEl.textContent = DEFAULT_SAMPLE_TEXT;
+      samplePlainEl.textContent = DEFAULT_SAMPLE_TEXT;
+    }
+  });
 }
 
 function init() {
   setupFaceLoader();
+  setupSampleEditing();
   tabInstalledEl.addEventListener("click", () => selectTab("installed"));
   tabBrewEl.addEventListener("click", () => selectTab("brew"));
   filterEl.addEventListener("input", renderList);
 
   document.addEventListener("keydown", (event) => {
+    if (event.target === sampleHalfEl) return;
     if (event.key === "/" && document.activeElement !== filterEl) {
       event.preventDefault();
       filterEl.focus();
       return;
     }
-    if (event.target === filterEl) return;
+    if (event.target === filterEl && !["ArrowDown", "ArrowUp"].includes(event.key)) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
       moveSelection(1);
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       moveSelection(-1);
-    } else if (event.key === "Enter" && state.tab === "installed" && state.selected?.tab === "installed") {
+    } else if (event.key === "Enter" && state.selected?.tab === "installed") {
       event.preventDefault();
-      onBuild(state.selected.candidate);
+      void onBuild(state.selected.candidate);
     }
   });
 
@@ -453,8 +553,11 @@ function init() {
     ]);
     if (installedResult) state.candidates = installedResult.candidates;
     if (webResult) state.web = webResult;
-    renderList();
     renderSlots();
+    const first = state.candidates[0];
+    state.selected = first ? { tab: "installed", candidate: first } : null;
+    renderList();
+    void renderDetail();
   })();
 }
 

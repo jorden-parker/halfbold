@@ -1,8 +1,8 @@
 import argparse
 import json
-import shutil
 import sys
 import tempfile
+import threading
 from pathlib import Path
 
 from fontTools.ttLib import TTLibError
@@ -30,7 +30,14 @@ from halfbold.scan import (
 )
 from halfbold.web import get_web_fonts, set_web_font
 
-CACHE_DIR = Path(tempfile.gettempdir()) / "halfbold-app"
+
+def default_cache_dir() -> Path:
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Caches" / "halfbold"
+    return Path(tempfile.gettempdir()) / "halfbold-app"
+
+
+CACHE_DIR = default_cache_dir()
 CASK_INDEX_CACHE = "cask-index.json"
 
 
@@ -102,12 +109,18 @@ def casks(args: argparse.Namespace) -> dict:
         return {"casks": [{"token": t, "name": t, "google": False} for t in tokens]}
 
 
+def cached_cask_fonts(token: str) -> list[Path]:
+    into = CACHE_DIR / "casks" / token
+    fonts = sorted(into.rglob("*.ttf")) if into.is_dir() else []
+    if fonts:
+        return fonts
+    into.mkdir(parents=True, exist_ok=True)
+    cask_font_dir(token, into)
+    return sorted(into.rglob("*.ttf"))
+
+
 def cask_fonts(args: argparse.Namespace) -> dict:
-    into = CACHE_DIR / "casks" / args.token
-    shutil.rmtree(into, ignore_errors=True)
-    into.mkdir(parents=True)
-    cask_font_dir(args.token, into)
-    candidates = candidates_from_paths(sorted(into.rglob("*.ttf")))
+    candidates = candidates_from_paths(cached_cask_fonts(args.token))
     if not candidates:
         raise ValueError(
             f"no Regular + Bold pair or variable TrueType font in {args.token}"
@@ -192,17 +205,64 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     web_parser.add_argument("--fonts-dir", type=Path, default=DEFAULT_FONTS_DIR)
     web_parser.set_defaults(handler=web)
 
+    serve_parser = subparsers.add_parser("serve")
+    serve_parser.set_defaults(handler=None)
+
     args = parser.parse_args(argv)
     if args.command == "web" and args.kind and not args.family:
         parser.error("web KIND requires FAMILY")
     return args
 
 
+API_ERRORS = (ValueError, TTLibError, OSError)
+
+
+def handle(argv: list[str]) -> dict:
+    args = parse_args(argv)
+    if args.handler is None:
+        raise ValueError("serve cannot be nested")
+    return args.handler(args)
+
+
+def serve(stdin=None, stdout=None) -> int:
+    stdin = stdin or sys.stdin
+    stdout = stdout or sys.stdout
+    write_lock = threading.Lock()
+
+    def respond(payload: dict) -> None:
+        with write_lock:
+            stdout.write(json.dumps(payload) + "\n")
+            stdout.flush()
+
+    def work(request: dict) -> None:
+        request_id = request.get("id")
+        try:
+            result = handle([str(a) for a in request.get("args", [])])
+            respond({"id": request_id, "ok": True, "result": result})
+        except (*API_ERRORS, SystemExit) as err:
+            respond({"id": request_id, "ok": False, "error": str(err)})
+
+    threads = []
+    for line in stdin:
+        line = line.strip()
+        if not line:
+            continue
+        request = json.loads(line)
+        thread = threading.Thread(target=work, args=(request,), daemon=True)
+        thread.start()
+        threads.append(thread)
+    for thread in threads:
+        thread.join()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    if args.handler is None:
+        return serve()
     try:
         payload = args.handler(args)
-    except (ValueError, TTLibError, OSError) as err:
+    except API_ERRORS as err:
         print(json.dumps({"error": str(err)}))
         return 1
     print(json.dumps(payload))

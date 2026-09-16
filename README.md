@@ -85,15 +85,21 @@ at a family. It drives `halfbold-api` under the hood, so the Python package
 stays the only place with font logic. Homebrew casks are listed by font name
 (from the Homebrew formulae index, cached for a day) and Google Fonts casks
 are drawn in their own face; other casks pick up their face after a preview
-or install.
+or install. Selecting any row previews it straight away; the sample text is
+editable and remembered. Hovering a Google Fonts cask fetches it in the
+background, and every download lands in `~/Library/Caches/halfbold`, so a
+cask previews once per machine.
 
 ```sh
-cd app && pnpm install && pnpm tauri dev      # develop
-cd app && pnpm tauri build                    # app/src-tauri/target/release/bundle/macos/halfbold.app
+cd app && bun install && bun tauri dev        # develop
+cd app && bun tauri build                     # app/src-tauri/target/release/bundle/macos/halfbold.app
 ```
 
+The app keeps one `halfbold-api serve` process alive and sends it JSON
+requests over stdin, so only the first call pays Python start-up.
+
 Needs Rust (`brew install rustup && rustup toolchain install stable && rustup default stable`,
-then put `/opt/homebrew/opt/rustup/bin` on `PATH`), pnpm and `uv`. Set
+then put `/opt/homebrew/opt/rustup/bin` on `PATH`), Bun (`brew install bun`) and `uv`. Set
 `HALFBOLD_REPO=/path/to/halfbold` if the built app is moved away from the
 repo checkout.
 
@@ -109,5 +115,7 @@ go -C tui vet ./... && go -C tui test ./...
 
 `uv run halfbold-api <subcommand>` is the JSON interface the desktop app
 (`app/`) drives: `installed`, `build`, `preview`, `casks`, `cask-fonts`,
-`cask-install`, `web`. Each prints one JSON object; failures print
-`{"error": …}` and exit 1.
+`cask-face`, `cask-install`, `web`. Each prints one JSON object; failures print
+`{"error": …}` and exit 1. `serve` reads `{"id", "args"}` lines on stdin and
+answers each with `{"id", "ok", "result" | "error"}`, running requests
+concurrently.
