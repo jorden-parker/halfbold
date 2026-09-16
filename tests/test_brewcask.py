@@ -10,7 +10,11 @@ from halfbold import brewcask, cli
 from halfbold.brewcask import (
     CaskInfo,
     cask_font_dir,
+    cask_info_from_payload,
+    download_google_face,
     extract_fonts,
+    fetch_cask_index,
+    font_cask_entries,
     google_fonts_urls,
     installed_font_paths,
     parse_cask_info,
@@ -203,6 +207,143 @@ def test_installed_font_paths_falls_back_to_fonts_dir(tmp_path):
     a_path.unlink()
     paths = installed_font_paths(info, fonts_dir)
     assert paths == [b_path]
+
+
+def test_cask_info_from_payload_matches_parse_cask_info():
+    cask = ROBOTO_JSON["casks"][0]
+    from_payload = cask_info_from_payload(cask)
+    from_parse = parse_cask_info(json.dumps(ROBOTO_JSON).encode())
+    assert from_payload == from_parse
+
+
+def test_font_cask_entries_names_and_google_flag():
+    index = [
+        {
+            "token": "font-b",
+            "name": ["B Font"],
+            "url": "https://github.com/google/fonts.git",
+            "url_specs": {"only_path": "ofl/b"},
+        },
+        {
+            "token": "font-a",
+            "name": [],
+            "url": "https://x/a.zip",
+        },
+        {
+            "token": "not-font",
+            "name": ["X"],
+        },
+    ]
+    entries = font_cask_entries(index)
+    assert len(entries) == 2
+    assert entries[0] == {"token": "font-b", "name": "B Font", "google": True}
+    assert entries[1] == {"token": "font-a", "name": "font-a", "google": False}
+
+
+def test_fetch_cask_index_uses_fresh_cache(tmp_path, monkeypatch):
+    cache = tmp_path / "index.json"
+    cache.write_text(json.dumps([{"token": "font-x"}]))
+
+    def fail_urlopen(*args, **kwargs):
+        raise AssertionError("network used")
+
+    monkeypatch.setattr(brewcask.urllib.request, "urlopen", fail_urlopen)
+    result = fetch_cask_index(cache)
+    assert result == [{"token": "font-x"}]
+
+
+def test_fetch_cask_index_downloads_when_stale(tmp_path, monkeypatch):
+    import os
+
+    cache = tmp_path / "index.json"
+    cache.write_text(json.dumps([{"token": "font-x"}]))
+    os.utime(cache, (0, 0))
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def read(self):
+            return b'[{"token": "font-y"}]'
+
+    def fake_urlopen(*args, **kwargs):
+        return FakeResponse()
+
+    monkeypatch.setattr(brewcask.urllib.request, "urlopen", fake_urlopen)
+    result = fetch_cask_index(cache)
+    assert result == [{"token": "font-y"}]
+    assert cache.read_text() == '[{"token": "font-y"}]'
+
+
+def test_fetch_cask_index_falls_back_to_stale_cache_offline(tmp_path, monkeypatch):
+    from urllib.error import URLError
+
+    cache = tmp_path / "index.json"
+    cache.write_text(json.dumps([{"token": "font-x"}]))
+
+    def fail_urlopen(*args, **kwargs):
+        raise URLError("offline")
+
+    monkeypatch.setattr(brewcask.urllib.request, "urlopen", fail_urlopen)
+    result = fetch_cask_index(cache)
+    assert result == [{"token": "font-x"}]
+
+
+def test_download_google_face_downloads_first_regular(tmp_path, monkeypatch):
+    info = CaskInfo(
+        token="font-roboto",
+        url="https://github.com/google/fonts.git",
+        branch="main",
+        only_path="ofl/roboto",
+        fonts=["Roboto-Italic[wdth,wght].ttf", "Roboto[wdth,wght].ttf"],
+        targets=[],
+    )
+
+    calls = []
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def read(self):
+            return b"ttf"
+
+    def fake_urlopen(url, timeout=None):
+        calls.append(url)
+        return FakeResponse()
+
+    monkeypatch.setattr(brewcask.urllib.request, "urlopen", fake_urlopen)
+    result = download_google_face(info, tmp_path)
+    assert result == tmp_path / "Roboto[wdth,wght].ttf"
+    assert result.read_bytes() == b"ttf"
+    assert len(calls) == 1
+    assert calls[0].endswith("Roboto%5Bwdth%2Cwght%5D.ttf")
+
+    def fail_urlopen(*args, **kwargs):
+        raise AssertionError("network used again")
+
+    monkeypatch.setattr(brewcask.urllib.request, "urlopen", fail_urlopen)
+    result2 = download_google_face(info, tmp_path)
+    assert result2 == result
+
+
+def test_download_google_face_none_for_other_casks():
+    info = CaskInfo(
+        token="font-x",
+        url="https://x.com/x.zip",
+        branch="",
+        only_path="",
+        fonts=["X.ttf"],
+        targets=[],
+    )
+    result = download_google_face(info, Path("/tmp"))
+    assert result is None
 
 
 def test_search_font_casks_reports_brew_failure(monkeypatch):

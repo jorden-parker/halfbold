@@ -10,6 +10,10 @@ from fontTools.ttLib import TTLibError
 from halfbold.brewcask import (
     cask_font_dir,
     cask_info,
+    cask_info_from_payload,
+    download_google_face,
+    fetch_cask_index,
+    font_cask_entries,
     install_cask,
     installed_font_paths,
     search_font_casks,
@@ -27,6 +31,7 @@ from halfbold.scan import (
 from halfbold.web import get_web_fonts, set_web_font
 
 CACHE_DIR = Path(tempfile.gettempdir()) / "halfbold-app"
+CASK_INDEX_CACHE = "cask-index.json"
 
 
 def candidate_payload(candidate: Candidate) -> dict:
@@ -85,8 +90,16 @@ def preview(args: argparse.Namespace) -> dict:
     }
 
 
+def cask_index() -> list[dict]:
+    return fetch_cask_index(CACHE_DIR / CASK_INDEX_CACHE)
+
+
 def casks(args: argparse.Namespace) -> dict:
-    return {"casks": search_font_casks()}
+    try:
+        return {"casks": font_cask_entries(cask_index())}
+    except ValueError:
+        tokens = search_font_casks()
+        return {"casks": [{"token": t, "name": t, "google": False} for t in tokens]}
 
 
 def cask_fonts(args: argparse.Namespace) -> dict:
@@ -103,6 +116,16 @@ def cask_fonts(args: argparse.Namespace) -> dict:
         "token": args.token,
         "candidates": [candidate_payload(c) for c in candidates],
     }
+
+
+def cask_face(args: argparse.Namespace) -> dict:
+    entry = next((c for c in cask_index() if c.get("token") == args.token), None)
+    if entry is None:
+        raise ValueError(f"unknown cask: {args.token}")
+    face = download_google_face(
+        cask_info_from_payload(entry), CACHE_DIR / "faces" / args.token
+    )
+    return {"token": args.token, "face": None if face is None else str(face)}
 
 
 def cask_install(args: argparse.Namespace) -> dict:
@@ -150,6 +173,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     cask_fonts_parser = subparsers.add_parser("cask-fonts")
     cask_fonts_parser.add_argument("token")
     cask_fonts_parser.set_defaults(handler=cask_fonts)
+
+    cask_face_parser = subparsers.add_parser("cask-face")
+    cask_face_parser.add_argument("token")
+    cask_face_parser.set_defaults(handler=cask_face)
 
     cask_install_parser = subparsers.add_parser("cask-install")
     cask_install_parser.add_argument("token")

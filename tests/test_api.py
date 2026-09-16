@@ -155,10 +155,139 @@ def test_web_sets_slot_and_reads_back(tmp_path: Path, capsys):
     assert "Nope Half" in payload["error"]
 
 
+def test_casks_returns_names_from_index(monkeypatch, capsys):
+    def fake_cask_index():
+        return [
+            {
+                "token": "font-roboto",
+                "name": ["Roboto"],
+                "url": "https://github.com/google/fonts.git",
+                "url_specs": {"only_path": "ofl/roboto"},
+            },
+            {
+                "token": "font-noto",
+                "name": ["Noto Sans"],
+                "url": "https://x.zip",
+            },
+            {
+                "token": "not-font",
+                "name": ["X"],
+            },
+        ]
+
+    monkeypatch.setattr(api, "cask_index", fake_cask_index)
+
+    result = main(["casks"])
+
+    assert result == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert len(payload["casks"]) == 2
+    assert payload["casks"][0]["token"] == "font-noto"
+    assert payload["casks"][0]["name"] == "Noto Sans"
+    assert payload["casks"][0]["google"] is False
+    assert payload["casks"][1]["token"] == "font-roboto"
+    assert payload["casks"][1]["name"] == "Roboto"
+    assert payload["casks"][1]["google"] is True
+
+
+def test_casks_falls_back_to_brew_search(monkeypatch, capsys):
+    def fake_cask_index():
+        raise ValueError("index unavailable")
+
+    def fake_search_font_casks():
+        return ["font-z"]
+
+    monkeypatch.setattr(api, "cask_index", fake_cask_index)
+    monkeypatch.setattr(api, "search_font_casks", fake_search_font_casks)
+
+    result = main(["casks"])
+
+    assert result == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert len(payload["casks"]) == 1
+    assert payload["casks"][0]["token"] == "font-z"
+    assert payload["casks"][0]["name"] == "font-z"
+    assert payload["casks"][0]["google"] is False
+
+
+def test_cask_face_google(monkeypatch, capsys, tmp_path):
+    cache_dir = tmp_path / "cache"
+    monkeypatch.setattr(api, "CACHE_DIR", cache_dir)
+
+    def fake_cask_index():
+        return [
+            {
+                "token": "font-roboto",
+                "url": "https://github.com/google/fonts.git",
+                "url_specs": {"only_path": "ofl/roboto"},
+            }
+        ]
+
+    def fake_download_google_face(info, into):
+        path = into / "Roboto.ttf"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"font")
+        return path
+
+    monkeypatch.setattr(api, "cask_index", fake_cask_index)
+    monkeypatch.setattr(api, "download_google_face", fake_download_google_face)
+
+    result = main(["cask-face", "font-roboto"])
+
+    assert result == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["token"] == "font-roboto"
+    assert payload["face"].endswith("Roboto.ttf")
+    assert (cache_dir / "faces" / "font-roboto" / "Roboto.ttf").exists()
+
+
+def test_cask_face_non_google(monkeypatch, capsys, tmp_path):
+    cache_dir = tmp_path / "cache"
+    monkeypatch.setattr(api, "CACHE_DIR", cache_dir)
+
+    def fake_cask_index():
+        return [
+            {
+                "token": "font-0xproto",
+                "url": "https://x.zip",
+            }
+        ]
+
+    def fake_download_google_face(info, into):
+        return None
+
+    monkeypatch.setattr(api, "cask_index", fake_cask_index)
+    monkeypatch.setattr(api, "download_google_face", fake_download_google_face)
+
+    result = main(["cask-face", "font-0xproto"])
+
+    assert result == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["token"] == "font-0xproto"
+    assert payload["face"] is None
+
+
+def test_cask_face_unknown_token(monkeypatch, capsys):
+    def fake_cask_index():
+        return []
+
+    monkeypatch.setattr(api, "cask_index", fake_cask_index)
+
+    result = main(["cask-face", "font-nope"])
+
+    assert result == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["error"] == "unknown cask: font-nope"
+
+
 def test_casks_reports_brew_failure(monkeypatch, capsys):
+    def fake_cask_index():
+        raise ValueError("index failed")
+
     def fake_search_font_casks():
         raise ValueError("brew search failed: x")
 
+    monkeypatch.setattr(api, "cask_index", fake_cask_index)
     monkeypatch.setattr(api, "search_font_casks", fake_search_font_casks)
 
     result = main(["casks"])

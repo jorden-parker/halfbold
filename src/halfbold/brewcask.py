@@ -2,6 +2,7 @@ import json
 import shutil
 import subprocess
 import tarfile
+import time
 import urllib.parse
 import urllib.request
 import zipfile
@@ -10,6 +11,9 @@ from pathlib import Path
 from urllib.error import URLError
 
 GOOGLE_FONTS_GIT_URL = "https://github.com/google/fonts.git"
+FONT_CASK_PREFIX = "font-"
+CASK_INDEX_URL = "https://formulae.brew.sh/api/cask.json"
+CASK_INDEX_MAX_AGE = 24 * 60 * 60
 
 ARCHIVE_SUFFIXES = (".tar.gz", ".tar.xz", ".tar")
 
@@ -24,12 +28,7 @@ class CaskInfo:
     targets: list[str]
 
 
-def parse_cask_info(data: bytes) -> CaskInfo:
-    payload = json.loads(data)
-    casks = payload.get("casks") or []
-    if not casks:
-        raise ValueError("brew info returned no cask")
-    cask = casks[0]
+def cask_info_from_payload(cask: dict) -> CaskInfo:
     url_specs = cask.get("url_specs") or {}
     artifacts = [a for a in cask.get("artifacts", []) if "font" in a]
     fonts = [a["font"][0] for a in artifacts]
@@ -44,6 +43,14 @@ def parse_cask_info(data: bytes) -> CaskInfo:
     )
 
 
+def parse_cask_info(data: bytes) -> CaskInfo:
+    payload = json.loads(data)
+    casks = payload.get("casks") or []
+    if not casks:
+        raise ValueError("brew info returned no cask")
+    return cask_info_from_payload(casks[0])
+
+
 def cask_info(token: str) -> CaskInfo:
     try:
         result = subprocess.run(
@@ -55,6 +62,43 @@ def cask_info(token: str) -> CaskInfo:
         stderr = err.stderr.decode() if err.stderr else str(err)
         raise ValueError(f"brew info failed: {stderr.strip()}") from err
     return parse_cask_info(result.stdout)
+
+
+def fetch_cask_index(cache: Path, max_age: float = CASK_INDEX_MAX_AGE) -> list[dict]:
+    if cache.exists() and time.time() - cache.stat().st_mtime < max_age:
+        return json.loads(cache.read_text())
+    try:
+        with urllib.request.urlopen(CASK_INDEX_URL, timeout=60) as response:
+            data = response.read()
+    except URLError as err:
+        if cache.exists():
+            return json.loads(cache.read_text())
+        raise ValueError(f"cask index download failed: {err.reason}") from err
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_bytes(data)
+    return json.loads(data)
+
+
+def is_google_fonts_cask(cask: dict) -> bool:
+    url_specs = cask.get("url_specs") or {}
+    return cask.get("url") == GOOGLE_FONTS_GIT_URL and bool(url_specs.get("only_path"))
+
+
+def font_cask_entries(index: list[dict]) -> list[dict]:
+    entries = []
+    for cask in index:
+        token = cask.get("token", "")
+        if not token.startswith(FONT_CASK_PREFIX):
+            continue
+        names = cask.get("name") or []
+        entries.append(
+            {
+                "token": token,
+                "name": ", ".join(names) or token,
+                "google": is_google_fonts_cask(cask),
+            }
+        )
+    return sorted(entries, key=lambda e: e["name"].lower())
 
 
 def google_fonts_urls(info: CaskInfo) -> list[str]:
@@ -71,6 +115,23 @@ def google_fonts_urls(info: CaskInfo) -> list[str]:
             f"{info.only_path}/{urllib.parse.quote(font)}"
         )
     return urls
+
+
+def download_google_face(info: CaskInfo, into: Path) -> Path | None:
+    urls = google_fonts_urls(info)
+    if not urls:
+        return None
+    url = urls[0]
+    path = into / urllib.parse.unquote(Path(url).name)
+    if path.exists():
+        return path
+    into.mkdir(parents=True, exist_ok=True)
+    try:
+        with urllib.request.urlopen(url, timeout=30) as response:
+            path.write_bytes(response.read())
+    except URLError as err:
+        raise ValueError(f"download failed: {url}: {err.reason}") from err
+    return path
 
 
 def download_google_fonts(info: CaskInfo, into: Path) -> list[Path]:
@@ -185,9 +246,6 @@ def cask_font_dir(token: str, into: Path) -> Path:
     else:
         extract_fonts(fetch_cask_archive(token), into)
     return into
-
-
-FONT_CASK_PREFIX = "font-"
 
 
 def search_font_casks() -> list[str]:
