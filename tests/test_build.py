@@ -39,6 +39,32 @@ def test_build_adds_bold_glyphs_and_calt(font_pair: tuple[Path, Path], tmp_path:
     assert font["name"].getBestFamilyName() == "Test Half"
 
 
+def test_rename_gives_half_font_its_own_postscript_and_full_names(
+    font_pair: tuple[Path, Path], tmp_path: Path
+):
+    regular, bold = font_pair
+    for path in (regular, bold):
+        font = TTFont(path)
+        name = font["name"]
+        style = name.getDebugName(2)
+        name.setName("Test NF", 1, 3, 1, 0x409)
+        name.setName(f"Test NF {style}", 4, 3, 1, 0x409)
+        name.setName(f"TestNF-{style}", 6, 3, 1, 0x409)
+        name.setName(f"Test NF {style} 1.0", 3, 3, 1, 0x409)
+        name.setName("Test Nerd Font", 16, 3, 1, 0x409)
+        font.save(path)
+    out = tmp_path / "Test-Half.ttf"
+    build_halfbold_font(regular, bold, out)
+
+    name = TTFont(out)["name"]
+    assert name.getDebugName(16) == "Test Nerd Font Half"
+    assert name.getDebugName(1) == "Test Nerd Font Half"
+    assert name.getDebugName(6) == "TestNerdFontHalf-Regular"
+    assert name.getDebugName(4) == "Test Nerd Font Half Regular"
+    assert name.getDebugName(3) != "Test NF Regular 1.0"
+    assert "TestNF-Regular" not in {r.toUnicode() for r in name.names}
+
+
 def test_cli_defaults_output_next_to_regular(font_pair: tuple[Path, Path], capsys):
     regular, bold = font_pair
     assert main([str(regular), str(bold)]) == 0

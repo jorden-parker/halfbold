@@ -136,12 +136,15 @@ def rename_font(font: TTFont) -> None:
     family = name_table.getBestFamilyName()
     base_family = " ".join(part for part in family.split() if part != "Variable")
     new_family = f"{base_family} {STYLE_SUFFIX}"
+    style = name_table.getDebugName(17) or name_table.getDebugName(2) or "Regular"
+    postscript = f"{new_family.replace(' ', '')}-{style.replace(' ', '')}"
+    full_name = f"{new_family} {style}"
     for record in name_table.names:
         if record.nameID in (1, 16):
             record.string = new_family
-        elif record.nameID in (3, 4):
-            record.string = record.toUnicode().replace(family, new_family)
+        elif record.nameID == 4:
+            record.string = full_name
         elif record.nameID == 6:
-            record.string = record.toUnicode().replace(
-                family.replace(" ", ""), new_family.replace(" ", "")
-            )
+            record.string = postscript
+        elif record.nameID == 3:
+            record.string = f"{postscript};{STYLE_SUFFIX}"
