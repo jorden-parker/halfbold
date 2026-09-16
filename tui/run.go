@@ -25,6 +25,20 @@ func (r runner) run(c candidate, out string) tea.Cmd {
 	}
 }
 
+func (r runner) previewArgs(c candidate) []string {
+	base := []string{"run", "--project", r.project, "halfbold", "--preview", c.regular}
+	if c.bold != "" {
+		base = append(base, c.bold)
+	}
+	return append(base, "--wait")
+}
+
+func (r runner) preview(c candidate) tea.Cmd {
+	return tea.ExecProcess(exec.Command("uv", r.previewArgs(c)...), func(err error) tea.Msg {
+		return previewDoneMsg{err: err}
+	})
+}
+
 func (r runner) webArgs(kind, family string) []string {
 	return []string{"run", "--project", r.project, "halfbold", "--" + kind, family}
 }

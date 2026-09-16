@@ -53,6 +53,8 @@ type runDoneMsg struct {
 	err    error
 }
 
+type previewDoneMsg struct{ err error }
+
 type model struct {
 	list      list.Model
 	brewList  list.Model
@@ -174,6 +176,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.screen = screenSlotPick
 				return m, nil
 			}
+		case "p":
+			if (m.screen == screenPick || m.screen == screenCaskPick) && m.list.FilterState() != list.Filtering {
+				selected, ok := m.list.SelectedItem().(item)
+				if !ok {
+					return m, nil
+				}
+				m.chosen = selected.c
+				return m, m.runner.preview(selected.c)
+			}
 		case "1", "2", "3":
 			if m.screen == screenSlotPick {
 				return m.startSetWeb(map[string]string{"1": "sans", "2": "serif", "3": "mono"}[msg.String()])
@@ -241,6 +252,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.output = msg.output
 		m.err = msg.err
 		m.screen = screenDone
+		return m, nil
+	case previewDoneMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			m.output = "preview failed: " + msg.err.Error()
+			m.screen = screenDone
+		}
 		return m, nil
 	case brewSearchMsg:
 		if msg.err != nil {
@@ -322,7 +340,7 @@ func (m model) View() string {
 		return fmt.Sprintf("Use \"%s Half\" on web pages as:\n\n", m.chosen.label) +
 			helpStyle.Render(fmt.Sprintf("  1: sans   2: serif   3: mono   enter: %s   esc: back", m.chosen.kind))
 	default:
-		return m.list.View() + "\n" + helpStyle.Render("enter: convert  s: use on web  i: install from Homebrew  /: filter  q: quit")
+		return m.list.View() + "\n" + helpStyle.Render("enter: convert  p: preview  s: use on web  i: install from Homebrew  /: filter  q: quit")
 	}
 }
 
