@@ -20,8 +20,8 @@ from halfbold.preview import (
 
 
 def _non_white_pixels(image, box) -> int:
-    band = image.crop(box)
-    return sum(1 for pixel in band.getdata() if pixel != (255, 255, 255))
+    band = image.crop(box).convert("L")
+    return sum(count for value, count in enumerate(band.histogram()) if value < 255)
 
 
 def _paragraph_bands(regular: Path, bold: Path | None):
