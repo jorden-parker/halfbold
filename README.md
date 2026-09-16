@@ -4,6 +4,16 @@ Turn any Regular + Bold TrueType pair into a bionic-reading font.
 
 ```sh
 uv run halfbold Inter-Regular.ttf Inter-Bold.ttf -o Inter-Half.ttf
+uv run halfbold InterVariable.ttf -o ~/Library/Fonts/Inter-Half.ttf
+```
+
+A single variable font is instanced at weight 400 and 700 (`--regular-weight`, `--bold-weight` to change). Output written into `~/Library/Fonts` is installed immediately on macOS.
+
+Fonts from Homebrew work directly:
+
+```sh
+brew install --cask font-inter font-source-serif-4
+uv run halfbold ~/Library/Fonts/InterVariable.ttf -o ~/Library/Fonts/Inter-Half.ttf
 ```
 
 Install the output, then turn on contextual alternates (`calt`) in the app. Most apps have it on by default. In CSS: `font-feature-settings: "calt"`.

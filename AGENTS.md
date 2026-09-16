@@ -4,6 +4,7 @@ Personal Python CLI. Takes a Regular and a Bold TrueType font of the same family
 
 ## How it works
 
+- A single variable font is instanced with `fontTools.varLib.instancer` at two weights first; a Regular + Bold pair is used as-is.
 - `build.py` copies every letter glyph from the Bold font into the Regular font under a `.half` suffix, decomposing composites so no cross-font component references survive.
 - It then generates an OpenType feature file: one chained `calt` rule per word length, longest first, each bolding `ceil(n / 2)` letters. An `ignore` rule stops the chain from re-firing mid-word.
 - `fontTools.feaLib` compiles that into a fresh `GSUB` table. The original font's `GSUB` features (ligatures, etc.) are dropped; `GPOS` (kerning) is kept.
