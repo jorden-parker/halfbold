@@ -21,6 +21,7 @@ const (
 	screenBrewPick
 	screenBrewInstalling
 	screenCaskPick
+	screenSlotPick
 )
 
 var (
@@ -34,9 +35,9 @@ func (i item) Title() string { return i.c.label }
 
 func (i item) Description() string {
 	if i.c.bold == "" {
-		return "variable font  " + filepath.Base(i.c.regular)
+		return i.c.kind + "  variable font  " + filepath.Base(i.c.regular)
 	}
-	return "Regular + Bold pair  " + filepath.Base(i.c.regular) + " + " + filepath.Base(i.c.bold)
+	return i.c.kind + "  Regular + Bold pair  " + filepath.Base(i.c.regular) + " + " + filepath.Base(i.c.bold)
 }
 
 func (i item) FilterValue() string { return i.c.label }
@@ -64,6 +65,7 @@ type model struct {
 	fontsDir  string
 	caskToken string
 	chosen    candidate
+	slot      string
 	output    string
 	err       error
 	width     int
@@ -109,6 +111,7 @@ func (m model) Init() tea.Cmd {
 
 func (m model) startRun(c candidate) (model, tea.Cmd) {
 	m.chosen = c
+	m.slot = ""
 	m.screen = screenRunning
 	dir := m.outDir
 	if dir == "" {
@@ -118,8 +121,15 @@ func (m model) startRun(c candidate) (model, tea.Cmd) {
 	return m, tea.Batch(m.spinner.Tick, m.runner.run(m.chosen, out))
 }
 
+func (m model) startSetWeb(kind string) (model, tea.Cmd) {
+	m.slot = kind
+	m.screen = screenRunning
+	return m, tea.Batch(m.spinner.Tick, m.runner.setWeb(kind, familyName(m.chosen)))
+}
+
 func (m model) showAllFonts() (model, tea.Cmd) {
 	m.screen = screenPick
+	m.slot = ""
 	files, err := scanFonts(m.dirs)
 	if err == nil {
 		m.list.SetItems(itemsFor(groupCandidates(files)))
@@ -154,6 +164,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.screen = screenBrewLoading
 				return m, tea.Batch(m.spinner.Tick, m.brew.search())
 			}
+		case "s":
+			if m.screen == screenPick && m.list.FilterState() != list.Filtering {
+				selected, ok := m.list.SelectedItem().(item)
+				if !ok {
+					return m, nil
+				}
+				m.chosen = selected.c
+				m.screen = screenSlotPick
+				return m, nil
+			}
+		case "1", "2", "3":
+			if m.screen == screenSlotPick {
+				return m.startSetWeb(map[string]string{"1": "sans", "2": "serif", "3": "mono"}[msg.String()])
+			}
 		case "enter":
 			switch m.screen {
 			case screenPick:
@@ -164,6 +188,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					return m.startRun(selected.c)
 				}
+			case screenSlotPick:
+				return m.startSetWeb(m.chosen.kind)
 			case screenBrewPick:
 				if m.brewList.FilterState() != list.Filtering {
 					selected, ok := m.brewList.SelectedItem().(caskItem)
@@ -189,6 +215,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch m.screen {
 			case screenDone:
 				return m.showAllFonts()
+			case screenSlotPick:
+				m.screen = screenPick
+				return m, nil
 			case screenBrewPick:
 				if m.brewList.FilterState() != list.Filtering {
 					m.screen = screenPick
@@ -275,6 +304,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) View() string {
 	switch m.screen {
 	case screenRunning:
+		if m.slot != "" {
+			return fmt.Sprintf("%s setting %s font to %s …\n", m.spinner.View(), m.slot, m.chosen.label)
+		}
 		return fmt.Sprintf("%s converting %s …\n", m.spinner.View(), m.chosen.label)
 	case screenDone:
 		return m.doneView()
@@ -286,8 +318,11 @@ func (m model) View() string {
 		return m.brewList.View()
 	case screenCaskPick:
 		return m.list.View()
+	case screenSlotPick:
+		return fmt.Sprintf("Use \"%s Half\" on web pages as:\n\n", m.chosen.label) +
+			helpStyle.Render(fmt.Sprintf("  1: sans   2: serif   3: mono   enter: %s   esc: back", m.chosen.kind))
 	default:
-		return m.list.View() + "\n" + helpStyle.Render("enter: convert  i: install from Homebrew  /: filter  q: quit")
+		return m.list.View() + "\n" + helpStyle.Render("enter: convert  s: use on web  i: install from Homebrew  /: filter  q: quit")
 	}
 }
 
@@ -295,6 +330,8 @@ func (m model) doneView() string {
 	var body string
 	if m.err != nil {
 		body = errorStyle.Render(lastLines(m.output, 15))
+	} else if m.slot != "" {
+		body = m.output + "\nThe extension reloads itself within 30 seconds."
 	} else {
 		body = m.output + "\nEnable \"calt\" in your app if it is off."
 	}

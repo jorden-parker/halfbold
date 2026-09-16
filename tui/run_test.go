@@ -24,3 +24,12 @@ func TestRunnerArgsPair(t *testing.T) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 }
+
+func TestRunnerWebArgs(t *testing.T) {
+	r := runner{project: "/repo"}
+	got := r.webArgs("mono", "JetBrainsMono Nerd Font")
+	want := []string{"run", "--project", "/repo", "halfbold", "--mono", "JetBrainsMono Nerd Font"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}

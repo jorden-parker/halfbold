@@ -17,6 +17,8 @@ go run -C tui . -project ..
 
 `-fonts DIR` (repeatable) scans other directories; `-out-dir DIR` writes the `-Half.ttf` somewhere other than next to the source font.
 
+Each row shows the font's kind (`sans`, `serif`, `mono`). Press `s` on a row to make its Half font the Chrome extension's font for that kind (`1`/`2`/`3` pick a different slot); this runs `halfbold --sans/--serif/--mono` and the extension reloads itself within 30 seconds.
+
 Press `i` to install a font from a Homebrew cask (`brew search --cask font-`) without leaving the picker. After `brew install --cask` finishes, the new font is converted straight away; when a cask ships several families you pick one first.
 
 Build or refresh Half versions of every eligible font in `~/Library/Fonts` (variable fonts with a weight axis, or Regular + Bold pairs; italics and existing Half fonts are skipped):
