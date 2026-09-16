@@ -82,7 +82,10 @@ A small Tauri window that lists every convertible font, previews the real
 half-bold result next to the plain font, builds the Half twin, installs
 Homebrew font casks, and points the Chrome extension's sans/serif/mono slots
 at a family. It drives `halfbold-api` under the hood, so the Python package
-stays the only place with font logic.
+stays the only place with font logic. Homebrew casks are listed by font name
+(from the Homebrew formulae index, cached for a day) and Google Fonts casks
+are drawn in their own face; other casks pick up their face after a preview
+or install.
 
 ```sh
 cd app && pnpm install && pnpm tauri dev      # develop
