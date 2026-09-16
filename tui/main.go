@@ -69,7 +69,7 @@ func main() {
 
 	if *list {
 		for _, c := range candidates {
-			fmt.Printf("%s\t%s\t%s\n", c.label, c.regular, c.bold)
+			fmt.Printf("%s\t%s\t%s\t%s\n", c.label, c.kind, c.regular, c.bold)
 		}
 		return
 	}

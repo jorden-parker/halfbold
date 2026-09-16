@@ -18,12 +18,14 @@ type fontFile struct {
 	family    string
 	subfamily string
 	variable  bool
+	kind      string
 }
 
 type candidate struct {
 	label   string
 	regular string
 	bold    string
+	kind    string
 }
 
 func scanFonts(dirs []string) ([]fontFile, error) {
@@ -85,11 +87,11 @@ func readFont(path string) (fontFile, bool, error) {
 	if err != nil {
 		return fontFile{}, false, err
 	}
-	tags, err := readTableTags(data)
+	dir, err := readTableDirectory(data)
 	if err != nil {
 		return fontFile{}, false, nil
 	}
-	if !tags["glyf"] {
+	if _, ok := dir["glyf"]; !ok {
 		return fontFile{}, false, nil
 	}
 	f, err := sfnt.Parse(data)
@@ -105,11 +107,14 @@ func readFont(path string) (fontFile, bool, error) {
 	if subfamily == "" {
 		subfamily = readName(f, &buf, sfnt.NameIDSubfamily)
 	}
+	family = strings.TrimSpace(family)
+	_, variable := dir["fvar"]
 	return fontFile{
 		path:      path,
-		family:    strings.TrimSpace(family),
+		family:    family,
 		subfamily: strings.TrimSpace(subfamily),
-		variable:  tags["fvar"],
+		variable:  variable,
+		kind:      fontKind(data, dir, family),
 	}, true, nil
 }
 
@@ -121,7 +126,12 @@ func readName(f *sfnt.Font, buf *sfnt.Buffer, id sfnt.NameID) string {
 	return name
 }
 
-func readTableTags(data []byte) (map[string]bool, error) {
+type tableRange struct {
+	offset uint32
+	length uint32
+}
+
+func readTableDirectory(data []byte) (map[string]tableRange, error) {
 	if len(data) < 12 {
 		return nil, errors.New("font data too short")
 	}
@@ -136,15 +146,67 @@ func readTableTags(data []byte) (map[string]bool, error) {
 		}
 	}
 	numTables := int(binary.BigEndian.Uint16(data[4:6]))
-	tags := make(map[string]bool, numTables)
+	dir := make(map[string]tableRange, numTables)
 	for i := 0; i < numTables; i++ {
 		offset := 12 + i*16
 		if offset+16 > len(data) {
 			return nil, errors.New("truncated table directory")
 		}
-		tags[string(data[offset:offset+4])] = true
+		dir[string(data[offset:offset+4])] = tableRange{
+			offset: binary.BigEndian.Uint32(data[offset+8 : offset+12]),
+			length: binary.BigEndian.Uint32(data[offset+12 : offset+16]),
+		}
+	}
+	return dir, nil
+}
+
+func readTableTags(data []byte) (map[string]bool, error) {
+	dir, err := readTableDirectory(data)
+	if err != nil {
+		return nil, err
+	}
+	tags := make(map[string]bool, len(dir))
+	for tag := range dir {
+		tags[tag] = true
 	}
 	return tags, nil
+}
+
+func tableBytes(data []byte, dir map[string]tableRange, tag string) []byte {
+	r, ok := dir[tag]
+	if !ok {
+		return nil
+	}
+	if uint64(r.offset)+uint64(r.length) > uint64(len(data)) {
+		return nil
+	}
+	return data[r.offset : r.offset+r.length]
+}
+
+var monoNamePattern = regexp.MustCompile(`mono|\bcode\b`)
+
+func fontKind(data []byte, dir map[string]tableRange, family string) string {
+	lowered := strings.ToLower(family)
+	os2 := tableBytes(data, dir, "OS/2")
+	post := tableBytes(data, dir, "post")
+	fixedPitch := len(post) >= 16 && binary.BigEndian.Uint32(post[12:16]) != 0
+	var serifStyle, proportion byte
+	if len(os2) >= 42 {
+		serifStyle, proportion = os2[33], os2[35]
+	}
+	if fixedPitch || proportion == 9 || monoNamePattern.MatchString(lowered) {
+		return "mono"
+	}
+	if serifStyle >= 2 && serifStyle <= 10 {
+		return "serif"
+	}
+	if serifStyle >= 11 && serifStyle <= 15 {
+		return "sans"
+	}
+	if strings.Contains(lowered, "serif") && !strings.Contains(lowered, "sans") {
+		return "serif"
+	}
+	return "sans"
 }
 
 var variableWordPattern = regexp.MustCompile(`\s+`)
@@ -165,6 +227,7 @@ func groupCandidates(files []fontFile) []candidate {
 			candidates = append(candidates, candidate{
 				label:   stripVariable(f.family),
 				regular: f.path,
+				kind:    f.kind,
 			})
 			continue
 		}
@@ -172,10 +235,12 @@ func groupCandidates(files []fontFile) []candidate {
 	}
 	for family, group := range byFamily {
 		var regular, bold string
+		var regularKind string
 		for _, f := range group {
 			switch strings.ToLower(f.subfamily) {
 			case "regular":
 				regular = f.path
+				regularKind = f.kind
 			case "bold":
 				bold = f.path
 			}
@@ -185,6 +250,7 @@ func groupCandidates(files []fontFile) []candidate {
 				label:   family,
 				regular: regular,
 				bold:    bold,
+				kind:    regularKind,
 			})
 		}
 	}
@@ -206,8 +272,12 @@ func groupCandidates(files []fontFile) []candidate {
 	return candidates
 }
 
+func familyName(c candidate) string {
+	return strings.TrimSuffix(c.label, " (variable)")
+}
+
 func outputPath(c candidate, outDir string) string {
-	label := strings.TrimSuffix(c.label, " (variable)")
+	label := familyName(c)
 	name := strings.ReplaceAll(label, " ", "") + "-Half.ttf"
 	return filepath.Join(outDir, name)
 }
