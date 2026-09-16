@@ -62,7 +62,7 @@ func main() {
 		os.Exit(1)
 	}
 	candidates := groupCandidates(files)
-	if len(candidates) == 0 {
+	if len(candidates) == 0 && *list {
 		fmt.Fprintf(os.Stderr, "no Regular+Bold pairs or variable TrueType fonts found in %s\n", strings.Join(dirs, ", "))
 		os.Exit(1)
 	}
@@ -75,7 +75,7 @@ func main() {
 	}
 
 	r := runner{project: absProject}
-	m := newModel(candidates, r, *outDir)
+	m := newModel(candidates, r, *outDir, dirs)
 	if _, err := tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "halfbold-tui: %v\n", err)
 		os.Exit(1)

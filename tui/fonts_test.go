@@ -114,6 +114,22 @@ func TestScanFontsSkipsHalfOutputAndMissingDir(t *testing.T) {
 	}
 }
 
+func TestReadFontsSkipsMissingAndNonTrueType(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Inter-Bold.otf")
+	data := buildSfntHeader(t, "OTTO", [][4]byte{{'C', 'F', 'F', ' '}})
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	files, err := readFonts([]string{path, filepath.Join(dir, "missing.ttf")})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(files) != 0 {
+		t.Fatalf("expected 0 files, got %d", len(files))
+	}
+}
+
 func buildSfntHeader(t *testing.T, version string, tags [][4]byte) []byte {
 	t.Helper()
 	numTables := len(tags)

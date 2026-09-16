@@ -17,6 +17,10 @@ const (
 	screenPick screen = iota
 	screenRunning
 	screenDone
+	screenBrewLoading
+	screenBrewPick
+	screenBrewInstalling
+	screenCaskPick
 )
 
 var (
@@ -37,37 +41,65 @@ func (i item) Description() string {
 
 func (i item) FilterValue() string { return i.c.label }
 
+type caskItem struct{ token string }
+
+func (i caskItem) Title() string       { return i.token }
+func (i caskItem) Description() string { return "brew install --cask " + i.token }
+func (i caskItem) FilterValue() string { return i.token }
+
 type runDoneMsg struct {
 	output string
 	err    error
 }
 
 type model struct {
-	list    list.Model
-	spinner spinner.Model
-	screen  screen
-	runner  runner
-	outDir  string
-	chosen  candidate
-	output  string
-	err     error
+	list      list.Model
+	brewList  list.Model
+	spinner   spinner.Model
+	screen    screen
+	runner    runner
+	brew      brew
+	outDir    string
+	dirs      []string
+	fontsDir  string
+	caskToken string
+	chosen    candidate
+	output    string
+	err       error
+	width     int
+	height    int
 }
 
-func newModel(candidates []candidate, r runner, outDir string) model {
+const pickTitle = "halfbold: pick a font to convert"
+
+func itemsFor(candidates []candidate) []list.Item {
 	items := make([]list.Item, len(candidates))
 	for i, c := range candidates {
 		items[i] = item{c: c}
 	}
-	l := list.New(items, list.NewDefaultDelegate(), 0, 0)
-	l.Title = "halfbold: pick a font to convert"
+	return items
+}
+
+func newModel(candidates []candidate, r runner, outDir string, dirs []string) model {
+	l := list.New(itemsFor(candidates), list.NewDefaultDelegate(), 0, 0)
+	l.Title = pickTitle
+	brewList := list.New(nil, list.NewDefaultDelegate(), 0, 0)
+	brewList.Title = "halfbold: pick a Homebrew font cask to install"
 	s := spinner.New()
 	s.Spinner = spinner.Dot
+	fontsDir := ""
+	if len(dirs) > 0 {
+		fontsDir = dirs[0]
+	}
 	return model{
-		list:    l,
-		spinner: s,
-		screen:  screenPick,
-		runner:  r,
-		outDir:  outDir,
+		list:     l,
+		brewList: brewList,
+		spinner:  s,
+		screen:   screenPick,
+		runner:   r,
+		outDir:   outDir,
+		dirs:     dirs,
+		fontsDir: fontsDir,
 	}
 }
 
@@ -75,18 +107,52 @@ func (m model) Init() tea.Cmd {
 	return nil
 }
 
+func (m model) startRun(c candidate) (model, tea.Cmd) {
+	m.chosen = c
+	m.screen = screenRunning
+	dir := m.outDir
+	if dir == "" {
+		dir = filepath.Dir(m.chosen.regular)
+	}
+	out := outputPath(m.chosen, dir)
+	return m, tea.Batch(m.spinner.Tick, m.runner.run(m.chosen, out))
+}
+
+func (m model) showAllFonts() (model, tea.Cmd) {
+	m.screen = screenPick
+	files, err := scanFonts(m.dirs)
+	if err == nil {
+		m.list.SetItems(itemsFor(groupCandidates(files)))
+	}
+	m.list.Title = pickTitle
+	m.list.ResetFilter()
+	m.list.ResetSelected()
+	return m, nil
+}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.list.SetSize(msg.Width, msg.Height-2)
+		m.width = msg.Width
+		m.height = msg.Height
+		m.list.SetSize(msg.Width, msg.Height-3)
+		m.brewList.SetSize(msg.Width, msg.Height-2)
 		return m, nil
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c":
 			return m, tea.Quit
 		case "q":
-			if m.screen != screenRunning && m.list.FilterState() != list.Filtering {
+			filtering := (m.screen == screenPick || m.screen == screenCaskPick) && m.list.FilterState() == list.Filtering
+			filtering = filtering || (m.screen == screenBrewPick && m.brewList.FilterState() == list.Filtering)
+			busy := m.screen == screenRunning || m.screen == screenBrewLoading || m.screen == screenBrewInstalling
+			if !busy && !filtering {
 				return m, tea.Quit
+			}
+		case "i":
+			if m.screen == screenPick && m.list.FilterState() != list.Filtering {
+				m.screen = screenBrewLoading
+				return m, tea.Batch(m.spinner.Tick, m.brew.search())
 			}
 		case "enter":
 			switch m.screen {
@@ -96,27 +162,47 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if !ok {
 						return m, nil
 					}
-					m.chosen = selected.c
-					m.screen = screenRunning
-					dir := m.outDir
-					if dir == "" {
-						dir = filepath.Dir(m.chosen.regular)
+					return m.startRun(selected.c)
+				}
+			case screenBrewPick:
+				if m.brewList.FilterState() != list.Filtering {
+					selected, ok := m.brewList.SelectedItem().(caskItem)
+					if !ok {
+						return m, nil
 					}
-					out := outputPath(m.chosen, dir)
-					return m, tea.Batch(m.spinner.Tick, m.runner.run(m.chosen, out))
+					m.caskToken = selected.token
+					m.screen = screenBrewInstalling
+					return m, tea.Batch(m.spinner.Tick, m.brew.install(m.caskToken, m.fontsDir))
+				}
+			case screenCaskPick:
+				if m.list.FilterState() != list.Filtering {
+					selected, ok := m.list.SelectedItem().(item)
+					if !ok {
+						return m, nil
+					}
+					return m.startRun(selected.c)
 				}
 			case screenDone:
-				m.screen = screenPick
-				return m, nil
+				return m.showAllFonts()
 			}
 		case "esc":
-			if m.screen == screenDone {
-				m.screen = screenPick
-				return m, nil
+			switch m.screen {
+			case screenDone:
+				return m.showAllFonts()
+			case screenBrewPick:
+				if m.brewList.FilterState() != list.Filtering {
+					m.screen = screenPick
+					return m, nil
+				}
+			case screenCaskPick:
+				if m.list.FilterState() != list.Filtering {
+					return m.showAllFonts()
+				}
 			}
 		}
 	case spinner.TickMsg:
-		if m.screen == screenRunning {
+		switch m.screen {
+		case screenRunning, screenBrewLoading, screenBrewInstalling:
 			var cmd tea.Cmd
 			m.spinner, cmd = m.spinner.Update(msg)
 			return m, cmd
@@ -127,10 +213,60 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg.err
 		m.screen = screenDone
 		return m, nil
+	case brewSearchMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			m.output = msg.err.Error()
+			m.screen = screenDone
+			return m, nil
+		}
+		items := make([]list.Item, len(msg.tokens))
+		for i, token := range msg.tokens {
+			items[i] = caskItem{token: token}
+		}
+		cmd := m.brewList.SetItems(items)
+		m.brewList.ResetFilter()
+		m.brewList.ResetSelected()
+		m.screen = screenBrewPick
+		return m, cmd
+	case brewInstallMsg:
+		if files, err := scanFonts(m.dirs); err == nil {
+			m.list.SetItems(itemsFor(groupCandidates(files)))
+		}
+		if msg.err != nil {
+			output := msg.output
+			if output == "" {
+				output = msg.err.Error()
+			}
+			m.output = output
+			m.err = msg.err
+			m.screen = screenDone
+			return m, nil
+		}
+		if len(msg.candidates) == 0 {
+			m.err = fmt.Errorf("%s installed no convertible TrueType font (OTF-only or italic-only cask)", msg.token)
+			m.output = m.err.Error()
+			m.screen = screenDone
+			return m, nil
+		}
+		if len(msg.candidates) == 1 {
+			return m.startRun(msg.candidates[0])
+		}
+		m.list.SetItems(itemsFor(msg.candidates))
+		m.list.Title = msg.token + " installed: pick a font to convert"
+		m.list.ResetFilter()
+		m.list.ResetSelected()
+		m.screen = screenCaskPick
+		return m, nil
 	}
-	if m.screen == screenPick {
+	switch m.screen {
+	case screenPick, screenCaskPick:
 		var cmd tea.Cmd
 		m.list, cmd = m.list.Update(msg)
+		return m, cmd
+	case screenBrewPick:
+		var cmd tea.Cmd
+		m.brewList, cmd = m.brewList.Update(msg)
 		return m, cmd
 	}
 	return m, nil
@@ -142,8 +278,16 @@ func (m model) View() string {
 		return fmt.Sprintf("%s converting %s …\n", m.spinner.View(), m.chosen.label)
 	case screenDone:
 		return m.doneView()
-	default:
+	case screenBrewLoading:
+		return fmt.Sprintf("%s searching Homebrew font casks …\n", m.spinner.View())
+	case screenBrewInstalling:
+		return fmt.Sprintf("%s brew install --cask %s …\n", m.spinner.View(), m.caskToken)
+	case screenBrewPick:
+		return m.brewList.View()
+	case screenCaskPick:
 		return m.list.View()
+	default:
+		return m.list.View() + "\n" + helpStyle.Render("enter: convert  i: install from Homebrew  /: filter  q: quit")
 	}
 }
 
