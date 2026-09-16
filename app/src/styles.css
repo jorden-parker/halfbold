@@ -1,0 +1,179 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f7f7f8;
+  --fg: #1a1a1a;
+  --muted: #6b6b70;
+  --border: #d9d9dc;
+  --accent: #2f6fed;
+  --panel: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17181b;
+    --fg: #e8e8ea;
+    --muted: #9a9aa2;
+    --border: #303136;
+    --accent: #5b8dfb;
+    --panel: #1f2024;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  font-family: system-ui, -apple-system, sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+header h1 {
+  font-size: 16px;
+  margin: 0;
+}
+
+nav {
+  display: flex;
+  gap: 4px;
+}
+
+.tab {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+#slots {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  min-height: 0;
+}
+
+aside {
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+#filter {
+  margin: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--fg);
+}
+
+#list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+}
+
+#list li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+
+#list li:hover {
+  background: var(--panel);
+}
+
+#list li.selected {
+  background: var(--accent);
+  color: white;
+}
+
+#list .kind,
+#list .state {
+  font-size: 11px;
+  color: var(--muted);
+  margin-left: auto;
+}
+
+#list li.selected .kind,
+#list li.selected .state {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+#list li.more {
+  color: var(--muted);
+  cursor: default;
+}
+
+#detail {
+  padding: 20px 28px;
+  overflow-y: auto;
+}
+
+#actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+
+#actions button {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--fg);
+  cursor: pointer;
+}
+
+#actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+#status {
+  color: var(--muted);
+  min-height: 1.2em;
+}
+
+.sample {
+  font-size: 22px;
+  line-height: 1.5;
+  max-width: 60ch;
+}
