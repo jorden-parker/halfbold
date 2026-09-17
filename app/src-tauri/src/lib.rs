@@ -149,11 +149,31 @@ async fn api(
         .map_err(|err| format!("halfbold-api task failed: {err}"))?
 }
 
+fn font_roots() -> Vec<PathBuf> {
+    let mut roots = vec![std::env::temp_dir().join("halfbold-app")];
+    if let Ok(home) = std::env::var("HOME") {
+        let library = Path::new(&home).join("Library");
+        roots.push(library.join("Fonts"));
+        roots.push(library.join("Caches/halfbold"));
+    }
+    roots
+}
+
+fn is_under_roots(path: &Path, roots: &[PathBuf]) -> bool {
+    let climbs = path
+        .components()
+        .any(|part| matches!(part, std::path::Component::ParentDir));
+    path.is_absolute() && !climbs && roots.iter().any(|root| path.starts_with(root))
+}
+
 #[tauri::command]
 async fn read_font(path: String) -> Result<tauri::ipc::Response, String> {
     let lowered = path.to_lowercase();
     if !(lowered.ends_with(".ttf") || lowered.ends_with(".otf")) {
         return Err(format!("{path} is not a font file"));
+    }
+    if !is_under_roots(Path::new(&path), &font_roots()) {
+        return Err(format!("{path} is outside the font folders"));
     }
     let bytes = std::fs::read(&path).map_err(|err| format!("{path}: {err}"))?;
     Ok(tauri::ipc::Response::new(bytes))
@@ -201,6 +221,21 @@ mod tests {
         assert!(result.is_ok(), "{result:?}");
         let error = backend.call(vec!["preview".to_string(), "/nope.ttf".to_string()]);
         assert!(error.unwrap_err().contains("nope.ttf"));
+    }
+
+    #[test]
+    fn is_under_roots_accepts_only_font_folders() {
+        let roots = vec![PathBuf::from("/Users/me/Library/Fonts")];
+        assert!(is_under_roots(
+            Path::new("/Users/me/Library/Fonts/Inter.ttf"),
+            &roots
+        ));
+        assert!(!is_under_roots(Path::new("/Users/me/secret.ttf"), &roots));
+        assert!(!is_under_roots(
+            Path::new("/Users/me/Library/Fonts/../../secret.ttf"),
+            &roots
+        ));
+        assert!(!is_under_roots(Path::new("Library/Fonts/Inter.ttf"), &roots));
     }
 
     #[test]
