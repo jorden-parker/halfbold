@@ -1,4 +1,5 @@
 import argparse
+import sys
 import tempfile
 from pathlib import Path
 
@@ -11,16 +12,28 @@ from halfbold.web import set_web_font
 
 DEFAULT_FONTS_DIR = Path.home() / "Library" / "Fonts"
 DEFAULT_CSS = Path(__file__).resolve().parents[2] / "chrome-extension" / "halfbold.css"
+COMMANDS = {
+    "sync": ("--all",),
+    "rebuild": ("--all", "--force"),
+    "list": ("--all", "--dry-run"),
+}
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    command = argv.pop(0) if argv and argv[0] in COMMANDS else None
     parser = argparse.ArgumentParser(
-        prog="halfbold",
+        prog=f"halfbold {command}" if command else "halfbold",
         description=(
             "Merge a Regular and a Bold TTF, or instance a variable TTF at two "
             "weights, into one font whose calt feature bolds the first half of "
-            "every word. With --all, scan a fonts folder and build every "
-            "missing or outdated Half font."
+            "every word. Use sync to build missing or stale Half fonts, "
+            "rebuild to regenerate all of them, or list to show the build plan."
+        ),
+        epilog=(
+            "Examples: halfbold rebuild | halfbold sync | halfbold list | "
+            "halfbold rebuild --fonts-dir /path/to/fonts | "
+            "halfbold rebuild --dry-run. Legacy --all flags still work."
         ),
     )
     parser.add_argument(
@@ -129,8 +142,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         metavar="TOKEN",
         help="Download a Homebrew font cask without installing it and preview it",
     )
-    args = parser.parse_args(argv)
+    args = parser.parse_args([*COMMANDS.get(command, ()), *argv])
     args.web = {kind: getattr(args, kind) for kind in KINDS if getattr(args, kind)}
+    if args.all and (args.regular is not None or args.output is not None):
+        parser.error(
+            "sync, rebuild, list and --all use --fonts-dir, not font files or -o"
+        )
     if args.web and (args.all or args.regular is not None):
         parser.error(
             "--sans/--serif/--mono cannot be combined with a font file or --all"
@@ -151,7 +168,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         and args.regular is None
     ):
         parser.error(
-            "give a font file, --all to scan the fonts folder, or --sans/--serif/--mono"
+            "use sync, rebuild or list, give a font file, or use --sans/--serif/--mono"
         )
     return args
 

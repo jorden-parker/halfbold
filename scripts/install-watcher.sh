@@ -20,7 +20,7 @@ cat > "$plist" <<EOF
     <string>--project</string>
     <string>$repo</string>
     <string>halfbold</string>
-    <string>--all</string>
+    <string>sync</string>
   </array>
   <key>WatchPaths</key>
   <array><string>$HOME/Library/Fonts</string></array>

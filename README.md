@@ -7,6 +7,32 @@ uv run halfbold Inter-Regular.ttf Inter-Bold.ttf -o Inter-Half.ttf
 uv run halfbold InterVariable.ttf -o ~/Library/Fonts/Inter-Half.ttf
 ```
 
+## Everyday commands
+
+Run these from this checkout:
+
+```sh
+uv run halfbold rebuild          # rebuild every eligible font using saved settings
+uv run halfbold sync             # build only missing or stale Half fonts
+uv run halfbold list             # show the build plan and each font's kind; write nothing
+```
+
+These scan `~/Library/Fonts`. Add `--fonts-dir DIR` to scan another folder,
+or `--dry-run` to preview a rebuild. Italics and existing Half fonts are skipped.
+
+For shorter commands from any directory, install once:
+
+```sh
+uv tool install --editable .
+halfbold rebuild
+halfbold sync
+halfbold list
+```
+
+If `halfbold` is not on your PATH, run `uv tool update-shell` and open a new
+terminal. The editable install follows changes in this checkout. Existing
+`--all`, `--all --force`, and `--all --dry-run` commands still work.
+
 ## Interactive picker
 
 A small Bubble Tea TUI lists the Regular + Bold pairs and variable TrueType fonts in `~/Library/Fonts` and runs `halfbold` on the one you pick:
@@ -23,20 +49,12 @@ Press `p` to preview the highlighted font: the sample paragraph is drawn into th
 
 Press `i` to install a font from a Homebrew cask (`brew search --cask font-`) without leaving the picker. After `brew install --cask` finishes, the new font is converted straight away; when a cask ships several families you pick one first.
 
-Build or refresh Half versions of every eligible font in `~/Library/Fonts` (variable fonts with a weight axis, or Regular + Bold pairs; italics and existing Half fonts are skipped):
-
-```sh
-uv run halfbold --all            # builds what is missing or older than its source
-uv run halfbold --all --dry-run  # show the plan
-uv run halfbold --all --force    # rebuild everything
-```
-
 Point the Chrome extension at a different Half font. Each web page slot
 (`sans`, `serif`, `mono`) maps to one installed Half family; the extension
 reloads itself within 30 seconds:
 
 ```sh
-uv run halfbold --all --dry-run                 # shows each family's kind
+uv run halfbold list                            # shows each family's kind
 uv run halfbold --sans "Inter" --mono "JetBrainsMono Nerd Font"
 ```
 
@@ -57,7 +75,7 @@ uv run halfbold --preview-cask font-roboto
 Inside tmux add `set -g allow-passthrough on` to `tmux.conf` (tmux ≥ 3.3)
 so the image reaches the terminal.
 
-Or let launchd do it. This installs a user agent that watches `~/Library/Fonts` and runs `halfbold --all` whenever anything in it changes, so `brew upgrade`, a Font Book install, or a manual copy all produce Half twins within about 30 seconds:
+Or let launchd do it. This installs a user agent that watches `~/Library/Fonts` and runs `halfbold sync` whenever anything in it changes, so `brew upgrade`, a Font Book install, or a manual copy all produce Half twins within about 30 seconds:
 
 ```sh
 scripts/install-watcher.sh
