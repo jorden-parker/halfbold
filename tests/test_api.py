@@ -39,7 +39,7 @@ def test_build_writes_half_font(font_pair, tmp_path: Path, capsys):
     assert result == 0
     payload = json.loads(capsys.readouterr().out)
     assert output.exists()
-    assert payload["letters"] == 26
+    assert payload["letters"] == 52
 
 
 def test_preview_caches_half_in_cache_dir(

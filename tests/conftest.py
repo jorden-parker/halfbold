@@ -5,7 +5,7 @@ from fontTools.fontBuilder import FontBuilder
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib.tables.TupleVariation import TupleVariation
 
-LETTERS = "abcdefghijklmnopqrstuvwxyz"
+LETTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
 def box_glyph(width: int):

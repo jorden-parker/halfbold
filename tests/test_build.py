@@ -41,7 +41,7 @@ def test_build_adds_bold_glyphs_and_calt(font_pair: tuple[Path, Path], tmp_path:
     letters = build_halfbold_font(regular, bold, out)
 
     font = TTFont(out)
-    assert len(letters) == 26
+    assert len(letters) == 52
     assert "a" + BOLD_SUFFIX in font.getGlyphOrder()
     assert font["hmtx"]["a" + BOLD_SUFFIX][0] == 300
     features = {f.FeatureTag for f in font["GSUB"].table.FeatureList.FeatureRecord}
@@ -79,7 +79,7 @@ def test_cli_defaults_output_next_to_regular(font_pair: tuple[Path, Path], capsy
     regular, bold = font_pair
     assert main([str(regular), str(bold)]) == 0
     assert regular.with_name("Test-Regular-Half.ttf").exists()
-    assert "26 letter glyphs" in capsys.readouterr().out
+    assert "52 letter glyphs" in capsys.readouterr().out
 
 
 def test_rejects_cff_like_font(font_pair: tuple[Path, Path], tmp_path: Path):

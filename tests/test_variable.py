@@ -32,4 +32,4 @@ def test_static_font_without_bold_is_rejected(
 def test_cli_accepts_single_variable_font(variable_font: Path, capsys):
     assert main([str(variable_font)]) == 0
     assert variable_font.with_name("TestVar-Half.ttf").exists()
-    assert "26 letter glyphs" in capsys.readouterr().out
+    assert "52 letter glyphs" in capsys.readouterr().out
