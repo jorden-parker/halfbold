@@ -24,6 +24,7 @@ your row when done.
 | 013  | Retire the Go TUI and the terminal preview (`--preview*`, Pillow) once the app covers them | P2 | M | 011, 012 | AWAITING MAINTAINER CONFIRMATION (deletes working features) |
 | 014  | Homebrew tab lists casks by real font name drawn in its own face (Google Fonts casks up front, others after preview); Installed rows styled too | P2 | M | 011, 012 | DONE (2026-09-16, executed in worktree `.claude/worktrees/agent-a671eb04fdcfe7ccd`, branch `advisor/014-cask-names`, 4 commits ending 804263e (reviewer replaced the deprecated `DOMNodeInserted` face loader with a visible-row queue), fast-forward merged to main at 804263e; manual GUI check in `pnpm tauri dev` still pending) |
 | 015  | Polish the app, preview every selection by default, list only convertible casks, one long-lived `halfbold-api serve`, Bun instead of pnpm + Vite, bold share / shortest word / weight settings shared by app, CLI and watcher | P2 | L | 012, 014 | DONE (2026-09-16, executed in worktree `.claude/worktrees/015`, branch `feat/015-polish-preview-bun`, 5 commits ending 23f16ca, maintainer GUI check of Installed and Homebrew tabs and the sliders, merged to main) |
+| 016  | Bold each camelCase subword on its own (`toHaveBeen` → `t`o `Ha`ve `Be`en; acronyms `HTTPServer` → `HT`TP `Ser`ver) so Half fonts read well in Ghostty / Neovim | P2 | M | — | DONE (2026-09-24, executed in worktree `.claude/worktrees/agent-ab43647cdb893f144`, branch `advisor/016-camel-case-subwords`, 10 commits ending 0dd6f4b, one revision round (two-lookup design after HarfBuzz rejected the GSUB on a Nerd Font), reviewed and approved incl. smoke check on JetBrainsMonoNL Nerd Font, merged to main) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
@@ -66,6 +67,23 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
   fetch, cached a day) and fetches one TTF per Google Fonts cask for row
   styling; non-Google casks get their face after preview/install. Python +
   frontend only; no Rust change.
+
+- 016 was written 2026-09-24 at `0f0205e` (`plan` variant: "Make the built
+  fonts work better with code editors/IDEs ... camel-cased words like
+  `toHaveBeenCalledExactlyOnceWith`"). Python-only (`build.py`, `settings.py`,
+  tests, `AGENTS.md`, `CONTEXT.md`); no app or Rust change. The rule design
+  was prototyped and shaped with uharfbuzz before writing, and every code
+  snippet in the plan passed ruff + pytest on a scratch copy. Rollout after
+  merge: `uv run halfbold --all --force`, then restart Ghostty.
+  Revision 1 (same day): the first executed version passed every test but
+  HarfBuzz rejected the GSUB of a real Nerd Font (sanitize budget is charged
+  per coverage reference; the case-split classes are large). The plan now
+  uses two lookups (`MARK_STARTS` marks subword starts with ~10 case-aware
+  references, `COUNT` bolds prefixes with the cheap union class) and skips
+  rules for a missing case, and its Step 8 smoke check on a real font is
+  mandatory. The executor's second STOP ("compiler drops lookup records")
+  was a false alarm: the CLI smoke check had picked up the saved settings
+  file (bold share 0.35); Step 8 now passes explicit flags.
 
 ## Findings considered and rejected
 
@@ -132,3 +150,13 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
   508 google/fonts casks expose a single TTF by URL, the other ~2100 are
   zips/dmgs up to hundreds of MB. Per-token `brew info` for names (~0.5 s
   each, 2600 tokens) rejected in favour of the formulae index.
+
+- Keeping the source font's own `GSUB` (coding ligatures like `->`, `!=` in
+  JetBrains Mono / Fira Code) when building a Half font: real editor-quality
+  gap, but a separate M/L change (merge lookups into the existing table
+  instead of `addOpenTypeFeaturesFromString(..., tables=["GSUB"])`). Deferred
+  from 016 on 2026-09-24; worth its own plan if the maintainer wants it.
+- A settings toggle to switch camelCase splitting off: deferred from 016;
+  `Settings.merged` only coerces int/float and the app would need a checkbox.
+- Digits inside identifiers (`md5Hash`, `utf8`) joining a subword: deferred
+  from 016; digits end a word today and keep doing so.
