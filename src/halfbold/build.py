@@ -138,7 +138,6 @@ def build_feature_code(
     bold_share: float = BOLD_SHARE,
     min_word_length: int = MIN_WORD_LENGTH,
 ) -> str:
-    lengths = range(max_word_length, max(min_word_length, 1) - 1, -1)
     lines = [
         f"@lower = [{' '.join(letters.lower)}];",
         f"@upper = [{' '.join(letters.upper)}];",
@@ -146,26 +145,23 @@ def build_feature_code(
         f"@upper_half = [{' '.join(half_name(n) for n in letters.upper)}];",
         "@plain = [@lower @upper];",
         "@half = [@lower_half @upper_half];",
-        "@letter = [@plain @half];",
         "lookup TO_HALF {",
         "  sub @plain by @half;",
         "} TO_HALF;",
+        "lookup TO_PLAIN {",
+        "  sub @half by @plain;",
+        "} TO_PLAIN;",
+        "lookup MARK_STARTS {",
+        *start_rules(bool(letters.lower), bool(letters.upper)),
+        "} MARK_STARTS;",
+        "lookup COUNT {",
+        *count_rules(max_word_length, bold_share, min_word_length),
+        "} COUNT;",
         "feature calt {",
-        "  ignore sub @letter @lower';",
-        "  ignore sub [@upper @upper_half] @upper' @upper;",
+        "  lookup MARK_STARTS;",
+        "  lookup COUNT;",
+        "} calt;",
     ]
-    for length in lengths:
-        lines.append(subword_rule(["@lower"] * length, bold_share))
-    for length in lengths:
-        if length > 1:
-            cases = ["@upper"] + ["@lower"] * (length - 1)
-            lines.append(subword_rule(cases, bold_share))
-    for length in lengths:
-        lines.append(subword_rule(["@upper"] * length, bold_share, "@upper @lower"))
-    lines.append("  ignore sub [@upper @upper_half] @upper';")
-    for length in lengths:
-        lines.append(subword_rule(["@upper"] * length, bold_share))
-    lines.append("} calt;")
     return "\n".join(lines) + "\n"
 
 
@@ -173,11 +169,40 @@ def half_name(name: str) -> str:
     return name + BOLD_SUFFIX
 
 
-def subword_rule(cases: list[str], bold_share: float, lookahead: str = "") -> str:
-    prefix = bold_prefix_length(len(cases), bold_share)
-    marked = " ".join(f"{case}' lookup TO_HALF" for case in cases[:prefix])
-    rest = " ".join([*cases[prefix:], *lookahead.split()])
-    return f"  sub {marked} {rest};".replace(" ;", ";")
+def start_rules(has_lower: bool, has_upper: bool) -> list[str]:
+    rules: list[str] = []
+    if has_lower:
+        rules.append("  ignore sub [@lower @lower_half] @lower';")
+    if has_lower and has_upper:
+        rules.append("  ignore sub [@upper @upper_half] @lower';")
+    if has_upper:
+        rules.append("  ignore sub [@upper @upper_half] @upper' @upper;")
+    if has_lower:
+        rules.append("  sub @lower' lookup TO_HALF;")
+    if has_lower and has_upper:
+        rules.append("  sub @upper' lookup TO_HALF @lower;")
+    if has_upper:
+        rules.append("  ignore sub [@upper @upper_half] @upper';")
+        rules.append("  sub @upper' lookup TO_HALF;")
+    return rules
+
+
+def count_rules(
+    max_word_length: int, bold_share: float, min_word_length: int
+) -> list[str]:
+    rules: list[str] = []
+    for length in range(max_word_length, 0, -1):
+        prefix = bold_prefix_length(length, bold_share)
+        rest = " ".join(["@plain"] * (length - 1))
+        if length < min_word_length:
+            rules.append(f"  sub @half' lookup TO_PLAIN {rest};".replace(" ;", ";"))
+        elif prefix > 1:
+            bolded = ["@plain' lookup TO_HALF"] * (prefix - 1)
+            consumed = ["@plain'"] * (length - prefix)
+            rules.append(f"  sub @half' {' '.join(bolded + consumed)};")
+        elif length > 1:
+            rules.append(f"  ignore sub @half' {rest};")
+    return rules
 
 
 def rename_font(font: TTFont) -> None:
