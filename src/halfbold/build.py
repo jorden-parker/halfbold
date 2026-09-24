@@ -1,4 +1,5 @@
 import math
+from dataclasses import dataclass
 from pathlib import Path
 
 from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
@@ -18,6 +19,16 @@ BOLD_SUFFIX = ".half"
 STYLE_SUFFIX = "Half"
 
 
+@dataclass(frozen=True)
+class Letters:
+    lower: list[str]
+    upper: list[str]
+
+    @property
+    def names(self) -> list[str]:
+        return self.lower + self.upper
+
+
 def build_halfbold_font(
     regular_path: Path,
     bold_path: Path | None,
@@ -30,10 +41,10 @@ def build_halfbold_font(
     )
 
     letters = word_letter_glyphs(regular, bold)
-    if not letters:
+    if not letters.names:
         raise ValueError("no letter glyphs shared between the two fonts")
 
-    copy_bold_glyphs(regular, bold, letters)
+    copy_bold_glyphs(regular, bold, letters.names)
     fea = build_feature_code(
         letters,
         settings.max_word_length,
@@ -45,7 +56,7 @@ def build_halfbold_font(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     regular.save(output_path)
-    return letters
+    return letters.names
 
 
 def load_font_pair(
@@ -84,18 +95,19 @@ def require_truetype_outlines(font: TTFont, path: Path) -> None:
         raise ValueError(f"{path} has no TrueType outlines (CFF/OTF is not supported)")
 
 
-def word_letter_glyphs(regular: TTFont, bold: TTFont) -> list[str]:
+def word_letter_glyphs(regular: TTFont, bold: TTFont) -> Letters:
     regular_cmap = regular.getBestCmap()
     bold_glyphs = set(bold.getGlyphOrder())
-    names: list[str] = []
+    lower: list[str] = []
+    upper: list[str] = []
     seen: set[str] = set()
     for codepoint, name in sorted(regular_cmap.items()):
-        if not chr(codepoint).isalpha():
+        char = chr(codepoint)
+        if not char.isalpha() or name not in bold_glyphs or name in seen:
             continue
-        if name in bold_glyphs and name not in seen:
-            names.append(name)
-            seen.add(name)
-    return names
+        seen.add(name)
+        (upper if char.isupper() else lower).append(name)
+    return Letters(lower, upper)
 
 
 def copy_bold_glyphs(regular: TTFont, bold: TTFont, letters: list[str]) -> None:
@@ -121,29 +133,51 @@ def bold_prefix_length(word_length: int, bold_share: float = BOLD_SHARE) -> int:
 
 
 def build_feature_code(
-    letters: list[str],
+    letters: Letters,
     max_word_length: int = MAX_WORD_LENGTH,
     bold_share: float = BOLD_SHARE,
     min_word_length: int = MIN_WORD_LENGTH,
 ) -> str:
-    plain = " ".join(letters)
-    half = " ".join(name + BOLD_SUFFIX for name in letters)
+    lengths = range(max_word_length, max(min_word_length, 1) - 1, -1)
     lines = [
-        f"@plain = [{plain}];",
-        f"@half = [{half}];",
+        f"@lower = [{' '.join(letters.lower)}];",
+        f"@upper = [{' '.join(letters.upper)}];",
+        f"@lower_half = [{' '.join(half_name(n) for n in letters.lower)}];",
+        f"@upper_half = [{' '.join(half_name(n) for n in letters.upper)}];",
+        "@plain = [@lower @upper];",
+        "@half = [@lower_half @upper_half];",
+        "@letter = [@plain @half];",
         "lookup TO_HALF {",
         "  sub @plain by @half;",
         "} TO_HALF;",
         "feature calt {",
-        "  ignore sub [@plain @half] @plain';",
+        "  ignore sub @letter @lower';",
+        "  ignore sub [@upper @upper_half] @upper' @upper;",
     ]
-    for length in range(max_word_length, max(min_word_length, 1) - 1, -1):
-        prefix = bold_prefix_length(length, bold_share)
-        marked = " ".join("@plain' lookup TO_HALF" for _ in range(prefix))
-        rest = " ".join("@plain" for _ in range(length - prefix))
-        lines.append(f"  sub {marked} {rest};".replace("  ;", ";").rstrip())
+    for length in lengths:
+        lines.append(subword_rule(["@lower"] * length, bold_share))
+    for length in lengths:
+        if length > 1:
+            cases = ["@upper"] + ["@lower"] * (length - 1)
+            lines.append(subword_rule(cases, bold_share))
+    for length in lengths:
+        lines.append(subword_rule(["@upper"] * length, bold_share, "@upper @lower"))
+    lines.append("  ignore sub [@upper @upper_half] @upper';")
+    for length in lengths:
+        lines.append(subword_rule(["@upper"] * length, bold_share))
     lines.append("} calt;")
     return "\n".join(lines) + "\n"
+
+
+def half_name(name: str) -> str:
+    return name + BOLD_SUFFIX
+
+
+def subword_rule(cases: list[str], bold_share: float, lookahead: str = "") -> str:
+    prefix = bold_prefix_length(len(cases), bold_share)
+    marked = " ".join(f"{case}' lookup TO_HALF" for case in cases[:prefix])
+    rest = " ".join([*cases[prefix:], *lookahead.split()])
+    return f"  sub {marked} {rest};".replace(" ;", ";")
 
 
 def rename_font(font: TTFont) -> None:
