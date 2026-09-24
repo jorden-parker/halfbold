@@ -36,3 +36,56 @@ def test_words_longer_than_max_use_the_longest_rule(
 
     glyphs = shape(out, "abcdef").split()
     assert glyphs == ["a.half", "b.half", "c", "d", "e", "f"]
+
+
+def bolded(path: Path, text: str) -> str:
+    out = ""
+    for glyph in shape(path, text).split():
+        if glyph == "space":
+            out += "*"
+        elif glyph.endswith(".half"):
+            out += glyph[0].upper()
+        else:
+            out += glyph[0].lower()
+    return out
+
+
+def test_camel_case_subwords_are_bolded_separately(
+    font_pair: tuple[Path, Path], tmp_path: Path
+):
+    regular, bold = font_pair
+    out = tmp_path / "Test-Half.ttf"
+    build_halfbold_font(regular, bold, out)
+
+    assert bolded(out, "toHaveBeenCalledExactlyOnceWith") == (
+        "ToHAveBEenCALledEXACtlyONceWIth"
+    )
+    assert bolded(out, "HTTPServer") == "HTtpSERver"
+    assert bolded(out, "XMLParser") == "XMlPARser"
+    assert bolded(out, "parseHTMLNow") == "PARseHTmlNOw"
+    assert bolded(out, "iPhone") == "iPHOne"
+    assert bolded(out, "getX") == "GEtx"
+
+
+def test_prose_words_are_unchanged_by_case(
+    font_pair: tuple[Path, Path], tmp_path: Path
+):
+    regular, bold = font_pair
+    out = tmp_path / "Test-Half.ttf"
+    build_halfbold_font(regular, bold, out)
+
+    assert bolded(out, "Hello World") == "HELlo*WORld"
+    assert bolded(out, "HELLO WORLD") == "HELlo*WORld"
+    assert bolded(out, "ABC") == "ABc"
+
+
+def test_lone_capital_after_acronym_is_not_rebolded(
+    font_pair: tuple[Path, Path], tmp_path: Path
+):
+    regular, bold = font_pair
+    out = tmp_path / "Test-Half.ttf"
+    build_halfbold_font(regular, bold, out, Settings(min_word_length=1))
+
+    assert bolded(out, "ABC") == "ABc"
+    assert bolded(out, "getX") == "GEtX"
+    assert bolded(out, "a") == "A"
