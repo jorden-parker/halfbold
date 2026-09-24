@@ -89,3 +89,27 @@ def test_lone_capital_after_acronym_is_not_rebolded(
     assert bolded(out, "ABC") == "ABc"
     assert bolded(out, "getX") == "GEtX"
     assert bolded(out, "a") == "A"
+
+
+def test_short_subwords_stay_plain_at_a_higher_minimum(
+    font_pair: tuple[Path, Path], tmp_path: Path
+):
+    regular, bold = font_pair
+    out = tmp_path / "Test-Half.ttf"
+    build_halfbold_font(regular, bold, out, Settings(min_word_length=5))
+
+    assert bolded(out, "toHaveBeenCalledExactlyOnceWith") == (
+        "tohavebeenCALledEXACtlyoncewith"
+    )
+    assert bolded(out, "HTTPServer") == "httpSERver"
+
+
+def test_high_bold_share_keeps_subword_boundaries(
+    font_pair: tuple[Path, Path], tmp_path: Path
+):
+    regular, bold = font_pair
+    out = tmp_path / "Test-Half.ttf"
+    build_halfbold_font(regular, bold, out, Settings(bold_share=0.8))
+
+    assert bolded(out, "getXFoo") == "GETxFOO"
+    assert bolded(out, "abcDef") == "ABCDEF"
