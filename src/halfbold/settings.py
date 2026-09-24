@@ -4,7 +4,7 @@ import tempfile
 from dataclasses import asdict, dataclass, fields, replace
 from pathlib import Path
 
-RULES_VERSION = 2
+RULES_VERSION = 3
 BOLD_SHARE = 0.5
 MIN_WORD_LENGTH = 2
 MAX_WORD_LENGTH = 20

@@ -7,7 +7,7 @@ Personal Python CLI. Takes a Regular and a Bold TrueType font of the same family
 - A single variable font is instanced with `fontTools.varLib.instancer` at two weights first; a Regular + Bold pair is used as-is.
 - `build.py` copies every letter glyph from the Bold font into the Regular font under a `.half` suffix, decomposing composites so no cross-font component references survive.
 - It then generates an OpenType feature file with two chained `calt` lookups. `MARK_STARTS` bolds the first letter of every subword (a run of letters split at camelCase boundaries: a capital after a lowercase letter, or the last capital of an acronym before a lowercase one). `COUNT` then matches each subword from its bold start, longest first, bolds the next `ceil(n * bold_share) - 1` letters, and un-bolds the start of any subword shorter than the shortest word.
-- `fontTools.feaLib` compiles that into a fresh `GSUB` table. The original font's `GSUB` features (ligatures, etc.) are dropped; `GPOS` (kerning) is kept.
+- `fontTools.feaLib` compiles that into a `GSUB` table. When the source font already has a scripted `GSUB`, `gsub.py` prepends the new lookups to it (so bolding runs before the font's own ligatures, and a bolded `fi` stays two letters), adds the `calt` lookups to every script and language, and keeps the feature list sorted. Coding ligatures like `->` therefore survive; `GPOS` (kerning) is kept as before.
 - The family name gets a ` Half` suffix so it installs next to the original.
 
 ## Automation

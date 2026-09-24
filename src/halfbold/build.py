@@ -8,6 +8,7 @@ from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTFont
 from fontTools.varLib import instancer
 
+from halfbold.gsub import has_scripted_gsub, prepend_lookups
 from halfbold.settings import (
     BOLD_SHARE,
     MAX_WORD_LENGTH,
@@ -51,12 +52,22 @@ def build_halfbold_font(
         settings.bold_share,
         settings.min_word_length,
     )
-    addOpenTypeFeaturesFromString(regular, fea, tables=["GSUB"])
+    add_calt_feature(regular, fea)
     rename_font(regular)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     regular.save(output_path)
     return letters.names
+
+
+def add_calt_feature(font: TTFont, fea: str) -> None:
+    original = font["GSUB"] if has_scripted_gsub(font) else None
+    if original is not None:
+        del font["GSUB"]
+    addOpenTypeFeaturesFromString(font, fea, tables=["GSUB"])
+    if original is not None:
+        prepend_lookups(original.table, font["GSUB"].table, "calt")
+        font["GSUB"] = original
 
 
 def load_font_pair(

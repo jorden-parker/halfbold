@@ -74,7 +74,7 @@ brew install --cask font-inter font-source-serif-4
 uv run halfbold ~/Library/Fonts/InterVariable.ttf -o ~/Library/Fonts/Inter-Half.ttf
 ```
 
-Install the output, then turn on contextual alternates (`calt`) in the app. Most apps have it on by default. In CSS: `font-feature-settings: "calt"`.
+Install the output, then turn on contextual alternates (`calt`) in the app. Most apps have it on by default. In CSS: `font-feature-settings: "calt"`. The source font's own OpenType features (coding ligatures such as `->` and `!=`, stylistic sets) are kept.
 
 ## App
 

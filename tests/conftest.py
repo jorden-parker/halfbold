@@ -1,11 +1,23 @@
 from pathlib import Path
 
 import pytest
+from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
 from fontTools.fontBuilder import FontBuilder
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib.tables.TupleVariation import TupleVariation
 
 LETTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+LIGATURE_FEATURES = """
+languagesystem DFLT dflt;
+languagesystem latn dflt;
+feature liga {
+  sub f i by f_i;
+} liga;
+feature calt {
+  script DFLT;
+  sub hyphen greater by arrow;
+} calt;
+"""
 
 
 def box_glyph(width: int):
@@ -18,17 +30,25 @@ def box_glyph(width: int):
     return pen.glyph()
 
 
-def make_font(path: Path, family: str, style: str, stem: int) -> Path:
+def make_font(
+    path: Path, family: str, style: str, stem: int, features: str = ""
+) -> Path:
     names = [".notdef", "space", *LETTERS]
+    cmap = {ord(" "): "space", **{ord(c): c for c in LETTERS}}
+    if features:
+        names += ["hyphen", "greater", "arrow", "f_i"]
+        cmap |= {ord("-"): "hyphen", ord(">"): "greater"}
     builder = FontBuilder(1000, isTTF=True)
     builder.setupGlyphOrder(names)
-    builder.setupCharacterMap({ord(" "): "space", **{ord(c): c for c in LETTERS}})
+    builder.setupCharacterMap(cmap)
     builder.setupGlyf({n: box_glyph(stem if n != "space" else 0) for n in names})
     builder.setupHorizontalMetrics({n: (stem + 100, 0) for n in names})
     builder.setupHorizontalHeader(ascent=800, descent=-200)
     builder.setupNameTable({"familyName": family, "styleName": style})
     builder.setupOS2()
     builder.setupPost()
+    if features:
+        addOpenTypeFeaturesFromString(builder.font, features, tables=["GSUB"])
     builder.save(path)
     return path
 
@@ -37,6 +57,15 @@ def make_font(path: Path, family: str, style: str, stem: int) -> Path:
 def font_pair(tmp_path: Path) -> tuple[Path, Path]:
     regular = make_font(tmp_path / "Test-Regular.ttf", "Test", "Regular", 100)
     bold = make_font(tmp_path / "Test-Bold.ttf", "Test", "Bold", 200)
+    return regular, bold
+
+
+@pytest.fixture
+def ligature_font_pair(tmp_path: Path) -> tuple[Path, Path]:
+    regular = make_font(
+        tmp_path / "Liga-Regular.ttf", "Liga", "Regular", 100, LIGATURE_FEATURES
+    )
+    bold = make_font(tmp_path / "Liga-Bold.ttf", "Liga", "Bold", 200, LIGATURE_FEATURES)
     return regular, bold
 
 

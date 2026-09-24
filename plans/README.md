@@ -151,11 +151,9 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
   zips/dmgs up to hundreds of MB. Per-token `brew info` for names (~0.5 s
   each, 2600 tokens) rejected in favour of the formulae index.
 
-- Keeping the source font's own `GSUB` (coding ligatures like `->`, `!=` in
-  JetBrains Mono / Fira Code) when building a Half font: real editor-quality
-  gap, but a separate M/L change (merge lookups into the existing table
-  instead of `addOpenTypeFeaturesFromString(..., tables=["GSUB"])`). Deferred
-  from 016 on 2026-09-24; worth its own plan if the maintainer wants it.
+- Keeping the source font's own `GSUB` (coding ligatures like `->`, `!=`):
+  DONE 2026-09-24 directly by the maintainer's request, no plan or executor
+  (`src/halfbold/gsub.py` prepends the Half lookups to the source GSUB).
 - A settings toggle to switch camelCase splitting off: deferred from 016;
   `Settings.merged` only coerces int/float and the app would need a checkbox.
 - Digits inside identifiers (`md5Hash`, `utf8`) joining a subword: deferred

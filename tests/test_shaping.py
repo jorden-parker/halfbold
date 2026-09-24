@@ -113,3 +113,15 @@ def test_high_bold_share_keeps_subword_boundaries(
 
     assert bolded(out, "getXFoo") == "GETxFOO"
     assert bolded(out, "abcDef") == "ABCDEF"
+
+
+def test_source_ligatures_survive_and_bold_letters_win(
+    ligature_font_pair: tuple[Path, Path], tmp_path: Path
+):
+    regular, bold = ligature_font_pair
+    out = tmp_path / "Liga-Half.ttf"
+    build_halfbold_font(regular, bold, out)
+
+    assert shape(out, "->") == "arrow"
+    assert shape(out, "first") == "f.half i.half r.half s t"
+    assert shape(out, "toffi") == "t.half o.half f.half f_i"
