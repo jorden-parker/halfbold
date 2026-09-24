@@ -4,6 +4,7 @@ from fontTools.ttLib import TTFont
 
 from halfbold.build import (
     BOLD_SUFFIX,
+    Letters,
     bold_prefix_length,
     build_feature_code,
     build_halfbold_font,
@@ -17,22 +18,43 @@ def test_bold_prefix_is_half_rounded_up():
     assert [bold_prefix_length(n, 1.0) for n in (2, 5)] == [2, 5]
 
 
+def lowercase_rules(fea: str) -> list[str]:
+    return [
+        line
+        for line in fea.splitlines()
+        if line.startswith("  sub @lower'") and "@upper" not in line
+    ]
+
+
 def test_feature_code_honours_share_and_min_word_length():
-    fea = build_feature_code(["a", "b"], 6, bold_share=0.25, min_word_length=4)
-    rules = [line for line in fea.splitlines() if line.startswith("  sub @plain'")]
+    fea = build_feature_code(Letters(["a", "b"], ["A"]), 6, 0.25, 4)
+    rules = lowercase_rules(fea)
     assert len(rules) == 3
     assert rules[-1].count("lookup TO_HALF") == 1
     assert rules[0].count("lookup TO_HALF") == 2
 
 
 def test_feature_code_lists_longest_words_first():
-    fea = build_feature_code(["a", "b"], 4)
-    rules = [
-        line for line in fea.splitlines() if line.strip().startswith("sub @plain'")
-    ]
+    fea = build_feature_code(Letters(["a", "b"], ["A"]), 4)
+    rules = lowercase_rules(fea)
     assert len(rules) == 3
     assert rules[0].count("lookup TO_HALF") == 2
     assert rules[-1].count("lookup TO_HALF") == 1
+
+
+def test_feature_code_orders_camel_case_rules():
+    fea = build_feature_code(Letters(["a"], ["A"]), 3, 0.5, 1)
+    body = fea.split("feature calt {\n", 1)[1]
+    lines = [line.strip() for line in body.splitlines() if line.startswith("  ")]
+    assert lines[0] == "ignore sub @letter @lower';"
+    assert lines[1] == "ignore sub [@upper @upper_half] @upper' @upper;"
+    acronym_end = lines.index("ignore sub [@upper @upper_half] @upper';")
+    assert any(line.endswith("@upper @lower;") for line in lines[:acronym_end])
+    assert lines[acronym_end + 1] == (
+        "sub @upper' lookup TO_HALF @upper' lookup TO_HALF @upper;"
+    )
+    assert "sub @upper' lookup TO_HALF;" not in lines[:acronym_end]
+    assert lines[acronym_end + 3] == "sub @upper' lookup TO_HALF;"
 
 
 def test_build_adds_bold_glyphs_and_calt(font_pair: tuple[Path, Path], tmp_path: Path):
@@ -42,7 +64,9 @@ def test_build_adds_bold_glyphs_and_calt(font_pair: tuple[Path, Path], tmp_path:
 
     font = TTFont(out)
     assert len(letters) == 52
-    assert "a" + BOLD_SUFFIX in font.getGlyphOrder()
+    glyph_order = font.getGlyphOrder()
+    assert "a" + BOLD_SUFFIX in glyph_order
+    assert "A" + BOLD_SUFFIX in glyph_order
     assert font["hmtx"]["a" + BOLD_SUFFIX][0] == 300
     features = {f.FeatureTag for f in font["GSUB"].table.FeatureList.FeatureRecord}
     assert "calt" in features
