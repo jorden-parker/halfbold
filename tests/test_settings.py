@@ -36,3 +36,7 @@ def test_corrupt_file_falls_back_to_defaults(tmp_path: Path):
 
 def test_cache_tag_changes_with_values():
     assert Settings().cache_tag() != Settings(bold_share=0.6).cache_tag()
+
+
+def test_cache_tag_carries_rules_version():
+    assert Settings().cache_tag().startswith("v2-")

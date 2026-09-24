@@ -4,6 +4,7 @@ import tempfile
 from dataclasses import asdict, dataclass, fields, replace
 from pathlib import Path
 
+RULES_VERSION = 2
 BOLD_SHARE = 0.5
 MIN_WORD_LENGTH = 2
 MAX_WORD_LENGTH = 20
@@ -59,9 +60,9 @@ class Settings:
 
     def cache_tag(self) -> str:
         return (
-            f"s{round(self.bold_share * 100)}-m{self.min_word_length}"
-            f"-x{self.max_word_length}-w{round(self.regular_weight)}"
-            f"-b{round(self.bold_weight)}"
+            f"v{RULES_VERSION}-s{round(self.bold_share * 100)}"
+            f"-m{self.min_word_length}-x{self.max_word_length}"
+            f"-w{round(self.regular_weight)}-b{round(self.bold_weight)}"
         )
 
 
