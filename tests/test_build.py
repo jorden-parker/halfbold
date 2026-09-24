@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
 from fontTools.ttLib import TTFont
 
 from halfbold.build import (
@@ -8,6 +9,8 @@ from halfbold.build import (
     bold_prefix_length,
     build_feature_code,
     build_halfbold_font,
+    copy_bold_glyphs,
+    word_letter_glyphs,
 )
 from halfbold.cli import main
 
@@ -18,43 +21,56 @@ def test_bold_prefix_is_half_rounded_up():
     assert [bold_prefix_length(n, 1.0) for n in (2, 5)] == [2, 5]
 
 
-def lowercase_rules(fea: str) -> list[str]:
-    return [
-        line
-        for line in fea.splitlines()
-        if line.startswith("  sub @lower'") and "@upper" not in line
-    ]
+def block(fea: str, name: str) -> list[str]:
+    body = fea.split(f"lookup {name} {{\n", 1)[1].split(f"}} {name};", 1)[0]
+    return [line.strip() for line in body.splitlines()]
 
 
 def test_feature_code_honours_share_and_min_word_length():
-    fea = build_feature_code(Letters(["a", "b"], ["A"]), 6, 0.25, 4)
-    rules = lowercase_rules(fea)
-    assert len(rules) == 3
-    assert rules[-1].count("lookup TO_HALF") == 1
-    assert rules[0].count("lookup TO_HALF") == 2
+    count = block(build_feature_code(Letters(["a"], ["A"]), 6, 0.25, 4), "COUNT")
+    assert [line.count("lookup TO_HALF") for line in count] == [1, 1, 0, 0, 0, 0]
+    unbolded = [line.startswith("sub @half' lookup TO_PLAIN") for line in count]
+    assert unbolded == [False, False, False, True, True, True]
 
 
 def test_feature_code_lists_longest_words_first():
-    fea = build_feature_code(Letters(["a", "b"], ["A"]), 4)
-    rules = lowercase_rules(fea)
-    assert len(rules) == 3
-    assert rules[0].count("lookup TO_HALF") == 2
-    assert rules[-1].count("lookup TO_HALF") == 1
+    count = block(build_feature_code(Letters(["a"], ["A"]), 4), "COUNT")
+    assert count == [
+        "sub @half' @plain' lookup TO_HALF @plain' @plain';",
+        "sub @half' @plain' lookup TO_HALF @plain';",
+        "ignore sub @half' @plain;",
+        "sub @half' lookup TO_PLAIN;",
+    ]
 
 
-def test_feature_code_orders_camel_case_rules():
-    fea = build_feature_code(Letters(["a"], ["A"]), 3, 0.5, 1)
-    body = fea.split("feature calt {\n", 1)[1]
-    lines = [line.strip() for line in body.splitlines() if line.startswith("  ")]
-    assert lines[0] == "ignore sub @letter @lower';"
-    assert lines[1] == "ignore sub [@upper @upper_half] @upper' @upper;"
-    acronym_end = lines.index("ignore sub [@upper @upper_half] @upper';")
-    assert any(line.endswith("@upper @lower;") for line in lines[:acronym_end])
-    assert lines[acronym_end + 1] == (
-        "sub @upper' lookup TO_HALF @upper' lookup TO_HALF @upper;"
-    )
-    assert "sub @upper' lookup TO_HALF;" not in lines[:acronym_end]
-    assert lines[acronym_end + 3] == "sub @upper' lookup TO_HALF;"
+def test_feature_code_marks_subword_starts_in_order():
+    fea = build_feature_code(Letters(["a"], ["A"]), 3)
+    assert block(fea, "MARK_STARTS") == [
+        "ignore sub [@lower @lower_half] @lower';",
+        "ignore sub [@upper @upper_half] @lower';",
+        "ignore sub [@upper @upper_half] @upper' @upper;",
+        "sub @lower' lookup TO_HALF;",
+        "sub @upper' lookup TO_HALF @lower;",
+        "ignore sub [@upper @upper_half] @upper';",
+        "sub @upper' lookup TO_HALF;",
+    ]
+    assert fea.index("lookup MARK_STARTS;") < fea.index("lookup COUNT;")
+
+
+def test_feature_code_compiles_for_fonts_with_one_case(font_pair: tuple[Path, Path]):
+    for pick in (
+        lambda found: Letters(found.lower, []),
+        lambda found: Letters([], found.upper),
+    ):
+        regular, bold = TTFont(font_pair[0]), TTFont(font_pair[1])
+        letters = pick(word_letter_glyphs(regular, bold))
+        copy_bold_glyphs(regular, bold, letters.names)
+        addOpenTypeFeaturesFromString(
+            regular, build_feature_code(letters), tables=["GSUB"]
+        )
+        assert "calt" in {
+            f.FeatureTag for f in regular["GSUB"].table.FeatureList.FeatureRecord
+        }
 
 
 def test_build_adds_bold_glyphs_and_calt(font_pair: tuple[Path, Path], tmp_path: Path):
