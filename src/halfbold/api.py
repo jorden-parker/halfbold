@@ -26,7 +26,7 @@ from halfbold.scan import (
     KINDS,
     Candidate,
     candidates_from_paths,
-    find_candidates,
+    find_installed_candidates,
     find_installed_half_families,
     read_font_info,
 )
@@ -85,7 +85,9 @@ def preview_half(
 def installed(args: argparse.Namespace) -> dict:
     return {
         "fonts_dir": str(args.fonts_dir),
-        "candidates": [candidate_payload(c) for c in find_candidates(args.fonts_dir)],
+        "candidates": [
+            candidate_payload(c) for c in find_installed_candidates(args.fonts_dir)
+        ],
     }
 
 

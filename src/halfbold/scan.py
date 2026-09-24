@@ -1,5 +1,6 @@
 import re
-from dataclasses import dataclass
+import sys
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
 
@@ -22,11 +23,12 @@ class Candidate:
     regular: Path
     bold: Path | None
     kind: Kind
+    output_dir: Path | None = None
 
     @property
     def output(self) -> Path:
         stem = self.family.replace(" ", "")
-        return self.regular.with_name(f"{stem}-{STYLE_SUFFIX}.ttf")
+        return (self.output_dir or self.regular.parent) / f"{stem}-{STYLE_SUFFIX}.ttf"
 
     @property
     def sources(self) -> list[Path]:
@@ -66,7 +68,7 @@ def font_kind(font: TTFont, family: str) -> Kind:
 def read_font_info(path: Path) -> FontInfo | None:
     try:
         font = TTFont(path, lazy=True)
-    except TTLibError:
+    except TTLibError, OSError:
         return None
     try:
         if "glyf" not in font:
@@ -101,6 +103,37 @@ def find_installed_half_families(fonts_dir: Path) -> set[str]:
 
 def find_candidates(fonts_dir: Path) -> list[Candidate]:
     return candidates_from_paths(sorted(fonts_dir.glob("*.ttf")))
+
+
+def installed_font_dirs() -> list[Path]:
+    if sys.platform != "darwin":
+        return []
+    return [
+        Path("/Library/Fonts"),
+        Path("/System/Library/Fonts"),
+        Path("/Network/Library/Fonts"),
+    ]
+
+
+def find_installed_candidates(fonts_dir: Path) -> list[Candidate]:
+    roots = [fonts_dir]
+    if fonts_dir == Path.home() / "Library/Fonts":
+        roots.extend(installed_font_dirs())
+    paths = dict.fromkeys(
+        path
+        for root in reversed(roots)
+        for path in sorted(root.rglob("*"))
+        if path.suffix.lower() in {".ttf", ".otf"}
+        and not path.name.startswith("._")
+        and path.is_file()
+    )
+    return sorted(
+        (
+            replace(candidate, output_dir=fonts_dir)
+            for candidate in candidates_from_paths(list(paths))
+        ),
+        key=lambda candidate: candidate.family.casefold(),
+    )
 
 
 def candidates_from_paths(paths: list[Path]) -> list[Candidate]:

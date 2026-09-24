@@ -150,7 +150,12 @@ async fn api(
 }
 
 fn font_roots() -> Vec<PathBuf> {
-    let mut roots = vec![std::env::temp_dir().join("halfbold-app")];
+    let mut roots = vec![
+        std::env::temp_dir().join("halfbold-app"),
+        PathBuf::from("/Library/Fonts"),
+        PathBuf::from("/System/Library/Fonts"),
+        PathBuf::from("/Network/Library/Fonts"),
+    ];
     if let Ok(home) = std::env::var("HOME") {
         let library = Path::new(&home).join("Library");
         roots.push(library.join("Fonts"));

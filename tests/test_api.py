@@ -395,3 +395,65 @@ def test_casks_reports_brew_failure(monkeypatch, capsys):
     assert result == 1
     payload = json.loads(capsys.readouterr().out)
     assert payload["error"] == "brew search failed: x"
+
+
+def test_installed_discovers_system_fonts_and_builds_into_user_folder(
+    tmp_path, monkeypatch, capsys
+):
+    from halfbold import scan
+
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    fonts = tmp_path / "Library/Fonts"
+    fonts.mkdir(parents=True)
+    system = tmp_path / "system"
+    supplemental = system / "Supplemental"
+    supplemental.mkdir(parents=True)
+    regular = make_font(supplemental / "Arial.TTF", "Arial", "Regular", 100)
+    bold = make_font(supplemental / "Arial Bold.ttf", "Arial", "Bold", 200)
+    monkeypatch.setattr(scan, "installed_font_dirs", lambda: [system])
+
+    assert main(["installed", "--fonts-dir", str(fonts)]) == 0
+    candidate = json.loads(capsys.readouterr().out)["candidates"][0]
+    assert candidate["family"] == "Arial"
+    assert candidate["regular"] == str(regular)
+    assert candidate["bold"] == str(bold)
+    assert candidate["output"] == str(fonts / "Arial-Half.ttf")
+    assert main(["build", str(regular), str(bold), "-o", candidate["output"]]) == 0
+    capsys.readouterr()
+    assert main(["installed", "--fonts-dir", str(fonts)]) == 0
+    rebuilt = json.loads(capsys.readouterr().out)["candidates"][0]
+    assert rebuilt["built"] is True
+    assert rebuilt["stale"] is False
+    assert not (supplemental / "Arial-Half.ttf").exists()
+
+
+def test_installed_prefers_user_pair_over_duplicate_system_pair(tmp_path, monkeypatch):
+    from halfbold import scan
+
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    fonts = tmp_path / "Library/Fonts"
+    system = tmp_path / "system"
+    for root in (fonts, system):
+        root.mkdir(parents=True)
+        make_font(root / "Arial.ttf", "Arial", "Regular", 100)
+        make_font(root / "Arial Bold.ttf", "Arial", "Bold", 200)
+    monkeypatch.setattr(scan, "installed_font_dirs", lambda: [system])
+
+    candidates = scan.find_installed_candidates(fonts)
+    assert len(candidates) == 1
+    assert candidates[0].regular.parent == fonts
+    assert candidates[0].bold.parent == fonts
+
+
+def test_installed_custom_folder_stays_scoped(tmp_path, monkeypatch):
+    from halfbold import scan
+
+    fonts = tmp_path / "custom"
+    system = tmp_path / "system"
+    fill_fonts_dir(fonts)
+    system.mkdir()
+    make_font(system / "Arial.ttf", "Arial", "Regular", 100)
+    make_font(system / "Arial Bold.ttf", "Arial", "Bold", 200)
+    monkeypatch.setattr(scan, "installed_font_dirs", lambda: [system])
+
+    assert {c.family for c in scan.find_installed_candidates(fonts)} == {"Pair", "Var"}
