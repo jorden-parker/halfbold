@@ -13,6 +13,7 @@ Run these from this checkout:
 
 ```sh
 uv run halfbold rebuild          # rebuild every eligible font using saved settings
+uv run halfbold desktop          # launch the desktop app
 uv run halfbold sync             # build only missing or stale Half fonts
 uv run halfbold list             # show the build plan and each font's kind; write nothing
 ```
@@ -117,9 +118,14 @@ and bold weights. They are saved to
 launchd watcher read too, so every rebuild uses the same choices.
 
 ```sh
-cd app && bun install && bun tauri dev        # develop
+uv run halfbold desktop                      # launch from source
 cd app && bun tauri build                     # app/src-tauri/target/release/bundle/macos/halfbold.app
 ```
+
+`halfbold desktop` works from any directory after the editable install above.
+It installs app dependencies, finds Rust in common Cargo/Homebrew locations,
+and launches the app from this checkout. Keep the terminal open; Ctrl-C stops
+the development session. The first launch compiles the app and takes longer.
 
 The app keeps one `halfbold-api serve` process alive and sends it JSON
 requests over stdin, so only the first call pays Python start-up.

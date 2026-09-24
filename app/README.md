@@ -6,9 +6,12 @@ dev, `bun build ./index.html` for release). No framework, no Vite. The dev
 server is pinned to IPv4 because Tauri's `devUrl` is `http://127.0.0.1:1420`
 and a bare `localhost` bind can land on `::1`.
 
+After `uv tool install --editable .` from the repository root, launch from any
+directory with `halfbold desktop`. To build a release, run the build command
+from `app/`:
+
 ```sh
-bun install
-PATH=/opt/homebrew/opt/rustup/bin:$PATH bun tauri dev
+halfbold desktop
 PATH=/opt/homebrew/opt/rustup/bin:$PATH bun tauri build
 ```
 

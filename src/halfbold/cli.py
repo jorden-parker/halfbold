@@ -5,6 +5,7 @@ from pathlib import Path
 
 from halfbold.brewcask import cask_font_dir
 from halfbold.build import STYLE_SUFFIX, build_halfbold_font
+from halfbold.desktop import launch_desktop
 from halfbold.preview import preview_candidates, preview_files
 from halfbold.scan import KINDS, build_all, find_installed_half_families
 from halfbold.settings import load_settings
@@ -21,6 +22,16 @@ COMMANDS = {
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "desktop":
+        parser = argparse.ArgumentParser(
+            prog="halfbold desktop",
+            description=(
+                "Install app dependencies and launch the desktop app from source."
+            ),
+        )
+        args = parser.parse_args(argv[1:])
+        args.desktop = True
+        return args
     command = argv.pop(0) if argv and argv[0] in COMMANDS else None
     parser = argparse.ArgumentParser(
         prog=f"halfbold {command}" if command else "halfbold",
@@ -28,7 +39,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Merge a Regular and a Bold TTF, or instance a variable TTF at two "
             "weights, into one font whose calt feature bolds the first half of "
             "every word. Use sync to build missing or stale Half fonts, "
-            "rebuild to regenerate all of them, or list to show the build plan."
+            "rebuild to regenerate all of them, list to show the build plan, "
+            "or desktop to launch the desktop app."
         ),
         epilog=(
             "Examples: halfbold rebuild | halfbold sync | halfbold list | "
@@ -175,6 +187,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    if getattr(args, "desktop", False):
+        return launch_desktop()
     if args.web:
         installed = find_installed_half_families(args.fonts_dir)
         for kind, family in args.web.items():
