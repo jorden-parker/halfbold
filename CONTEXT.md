@@ -47,6 +47,10 @@ _Avoid_: boldness, amount, ratio
 The word length below which a word stays entirely plain.
 _Avoid_: skip, min length
 
+**Subword**:
+The unit the `calt` rules bold: a run of letters split at camelCase boundaries, so `toHaveBeen` is three subwords and `HTTPServer` is two.
+_Avoid_: token, segment, word part
+
 **Stale**:
 A Half font whose sources changed after it was built, so it needs a rebuild.
 _Avoid_: outdated (UI label only), dirty
