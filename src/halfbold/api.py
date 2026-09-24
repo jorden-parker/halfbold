@@ -1,5 +1,6 @@
 import argparse
 import json
+import subprocess
 import sys
 import tempfile
 import threading
@@ -18,6 +19,7 @@ from halfbold.brewcask import (
     installed_font_paths,
     search_font_casks,
 )
+from halfbold.browser import browser_status, setup_browser
 from halfbold.build import STYLE_SUFFIX, build_halfbold_font
 from halfbold.cli import DEFAULT_CSS, DEFAULT_FONTS_DIR
 from halfbold.scan import (
@@ -248,6 +250,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     web_parser.add_argument("--fonts-dir", type=Path, default=DEFAULT_FONTS_DIR)
     web_parser.set_defaults(handler=web)
 
+    browser_parser = subparsers.add_parser("browser")
+    browser_parser.add_argument("--setup", action="store_true")
+    browser_parser.set_defaults(
+        handler=lambda args: (
+            setup_browser(DEFAULT_CSS) if args.setup else browser_status(DEFAULT_CSS)
+        )
+    )
+
     settings_parser = subparsers.add_parser("settings")
     settings_parser.add_argument("values", nargs="?")
     settings_parser.set_defaults(handler=settings_command)
@@ -261,7 +271,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return args
 
 
-API_ERRORS = (ValueError, TTLibError, OSError)
+API_ERRORS = (ValueError, TTLibError, OSError, subprocess.SubprocessError)
 
 
 def handle(argv: list[str]) -> dict:

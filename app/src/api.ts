@@ -86,3 +86,14 @@ export function settings(values?: Partial<Settings>) {
 export function readFont(path: string) {
   return invoke<ArrayBuffer>("read_font", { path });
 }
+
+export interface BrowserStatus {
+  configured: boolean;
+  connected: boolean;
+  synced: boolean;
+  extension_dir: string;
+}
+
+export function browserStatus(setup = false) {
+  return api<BrowserStatus>("browser", ...(setup ? ["--setup"] : []));
+}

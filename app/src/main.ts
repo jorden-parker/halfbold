@@ -1,5 +1,6 @@
 import {
   build,
+  browserStatus,
   caskFace,
   caskFonts,
   caskInstall,
@@ -431,14 +432,18 @@ function makeButton(label: string, onClick: () => void, className = ""): HTMLBut
 
 function renderInstalledActions(c: Candidate) {
   actionsEl.textContent = "";
-  actionsEl.append(makeButton(c.built ? "Rebuild Half" : "Build Half", () => onBuild(c), c.built && !c.stale ? "" : "primary"));
+  actionsEl.append(makeButton("Use in browser", () => onUseAs(c.kind === "mono" ? "mono" : "sans", c), "primary"));
+  actionsEl.append(makeButton(c.built ? "Rebuild Half" : "Build Half", () => onBuild(c)));
+  const advanced = document.createElement("details");
+  const summary = document.createElement("summary");
+  summary.textContent = "Choose slot";
+  advanced.append(summary);
   for (const kind of KINDS) {
     const active = state.web?.[kind] === `${c.family}${HALF_SUFFIX}`;
     const button = makeButton(`Use as ${kind}`, () => onUseAs(kind, c), active ? "active" : "");
-    button.disabled = !c.built;
-    button.dataset.locked = String(!c.built);
-    actionsEl.append(button);
+    advanced.append(button);
   }
+  actionsEl.append(advanced);
 }
 
 async function renderInstalledDetail(c: Candidate) {
@@ -468,13 +473,73 @@ async function onBuild(c: Candidate) {
 }
 
 async function onUseAs(kind: Kind, c: Candidate) {
-  const result = await run(`Setting ${kind} to ${c.family}…`, () => webFonts(kind, c.family));
+  if (state.busy) return;
+  const result = await run(`Applying ${c.family} to browser…`, async () => {
+    await build(c);
+    const web = await webFonts(kind, c.family);
+    const fonts = await installed();
+    const connection = await browserStatus();
+    return { web, fonts, connection };
+  });
   if (!result) return;
-  state.web = result;
+  state.web = result.web;
+  state.candidates = result.fonts.candidates;
   renderSlots();
-  renderInstalledActions(c);
-  statusEl.textContent = `${c.family} Half is now the ${kind} font.`;
+  renderList();
+  if (state.selected?.tab === "installed") {
+    const selectedPath = state.selected.candidate.regular;
+    const updated = state.candidates.find((candidate) => candidate.regular === selectedPath);
+    if (updated) state.selected = { tab: "installed", candidate: updated };
+    if (state.selected?.tab === "installed") renderInstalledActions(state.selected.candidate);
+  }
+  statusEl.textContent = `${c.family} Half saved for browser ${kind === "mono" ? "code" : "text"}.`;
+  showBrowserStatus(result.connection);
+  if (!result.connection.configured) await setupChrome();
 }
+
+const browserStatusEl = $("#browser-status");
+const browserInstructionsEl = $("#browser-instructions");
+const setupChromeEl = $<HTMLButtonElement>("#setup-chrome");
+let checkingBrowser = false;
+
+function showBrowserStatus(status: Awaited<ReturnType<typeof browserStatus>>) {
+  browserStatusEl.textContent = status.synced
+    ? "Chrome connected · font settings received"
+    : status.connected ? "Chrome connected · applying…"
+    : status.configured ? "Chrome disconnected · open Chrome or finish setup"
+    : "Chrome setup needed";
+  setupChromeEl.textContent = status.connected ? "Chrome setup" : "Set up Chrome";
+  if (status.connected) browserInstructionsEl.hidden = true;
+}
+
+async function refreshBrowserStatus() {
+  if (checkingBrowser) return;
+  checkingBrowser = true;
+  try {
+    showBrowserStatus(await browserStatus());
+  } catch {
+    browserStatusEl.textContent = "Could not check Chrome connection";
+  } finally {
+    checkingBrowser = false;
+  }
+}
+
+async function setupChrome() {
+  setupChromeEl.disabled = true;
+  try {
+    const status = await browserStatus(true);
+    showBrowserStatus(status);
+    $("#extension-path").textContent = status.extension_dir;
+    browserInstructionsEl.hidden = false;
+  } catch (error) {
+    showError(String(error));
+  } finally {
+    setupChromeEl.disabled = false;
+  }
+}
+setupChromeEl.addEventListener("click", () => void setupChrome());
+void refreshBrowserStatus();
+setInterval(() => void refreshBrowserStatus(), 2000);
 
 async function renderBrewDetail(token: string) {
   const selection: Selection = { tab: "brew", token };
@@ -640,7 +705,9 @@ function init() {
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       moveSelection(-1);
-    } else if (event.key === "Enter" && state.selected?.tab === "installed") {
+    } else if (event.key === "Enter" && state.selected?.tab === "installed"
+      && !(event.target instanceof HTMLButtonElement)
+      && !(event.target instanceof HTMLElement && event.target.closest("details"))) {
       event.preventDefault();
       void onBuild(state.selected.candidate);
     }

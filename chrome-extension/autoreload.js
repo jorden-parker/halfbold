@@ -1,39 +1,49 @@
-const WATCHED = ["manifest.json", "halfbold.css", "shadow.js", "autoreload.js"];
-const ALARM = "halfbold-watch";
-const KEY = "fingerprint";
+let port;
+let retryTimer;
+let updates = Promise.resolve();
 
-async function fingerprint() {
-  const parts = await Promise.all(
-    WATCHED.map((file) =>
-      fetch(chrome.runtime.getURL(file), { cache: "no-store" }).then((r) =>
-        r.text()
-      )
-    )
-  );
-  const bytes = new TextEncoder().encode(parts.join(" "));
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return [...new Uint8Array(digest)]
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+async function applyUpdate(message) {
+  await chrome.storage.local.set({ liveStyle: message });
+  const tabs = await chrome.tabs.query({});
+  await Promise.all(tabs.map(async (tab) => {
+    if (!tab.id) return;
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id, allFrames: true },
+        files: ["shadow.js"],
+      });
+      await chrome.tabs.sendMessage(tab.id, { type: "halfbold-style", ...message });
+    } catch {
+      return;
+    }
+  }));
 }
 
-async function remember() {
-  await chrome.storage.session.set({ [KEY]: await fingerprint() });
-  chrome.alarms.create(ALARM, { periodInMinutes: 0.5 });
+function connect() {
+  if (port) return;
+  clearTimeout(retryTimer);
+  const connection = chrome.runtime.connectNative("com.jorden.halfbold");
+  port = connection;
+  connection.onMessage.addListener((message) => {
+    if (message.ping) {
+      connection.postMessage({ pong: true });
+      return;
+    }
+    if (typeof message.css !== "string" || typeof message.revision !== "string") return;
+    updates = updates.catch(() => {}).then(async () => {
+      await applyUpdate(message);
+      if (port === connection) connection.postMessage({ revision: message.revision });
+    });
+  });
+  connection.onDisconnect.addListener(() => {
+    void chrome.runtime.lastError;
+    if (port === connection) port = undefined;
+    retryTimer = setTimeout(connect, 2000);
+  });
 }
 
-async function reloadIfChanged() {
-  const { [KEY]: known } = await chrome.storage.session.get(KEY);
-  const current = await fingerprint();
-  if (known === undefined) {
-    await chrome.storage.session.set({ [KEY]: current });
-    return;
-  }
-  if (current !== known) chrome.runtime.reload();
-}
-
-chrome.runtime.onInstalled.addListener(remember);
-chrome.runtime.onStartup.addListener(remember);
-chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === ALARM) reloadIfChanged();
-});
+chrome.runtime.onInstalled.addListener(connect);
+chrome.runtime.onStartup.addListener(connect);
+chrome.alarms.create("halfbold-connect", { periodInMinutes: 0.5 });
+chrome.alarms.onAlarm.addListener(connect);
+connect();

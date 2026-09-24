@@ -21,6 +21,18 @@
       <div id="list-note" class="list-note" hidden></div>
     </aside>
     <main>
+      <section id="browser-setup" aria-label="Browser connection">
+        <div class="browser-heading">
+          <span id="browser-status" role="status">Checking Chrome…</span>
+          <button id="setup-chrome">Set up Chrome</button>
+        </div>
+        <div id="browser-instructions" hidden>
+          <p>In Chrome, turn on <b>Developer mode</b>, then click <b>Load unpacked</b>.</p>
+          <p>Press <b>Cmd+Shift+G</b>, paste the copied folder path, then select it.</p>
+          <p id="extension-path"></p>
+          <p>Replacing an older halfbold extension? Remove the old entry first. Chrome’s own pages cannot use custom fonts.</p>
+        </div>
+      </section>
       <section id="detail">
         <div id="empty" class="empty">
           <p class="empty-title">Nothing selected</p>

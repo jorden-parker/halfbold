@@ -1,4 +1,4 @@
-:root {
+:root, :host {
   --halfbold-sans: "Inter Half";
   --halfbold-serif: "Source Serif 4 Half";
   --halfbold-mono: "JetBrainsMono Nerd Font Half";

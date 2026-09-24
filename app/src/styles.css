@@ -421,3 +421,27 @@ button.link:hover {
     transition: opacity 120ms ease-out;
   }
 }
+
+#browser-setup {
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 12px;
+}
+.browser-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+#browser-instructions p { margin: 8px 0; }
+#extension-path { overflow-wrap: anywhere; user-select: text; }
+
+#setup-chrome {
+  padding: 4px 11px;
+  border: 1px solid var(--control-border);
+  border-radius: 6px;
+  background: var(--control);
+}
+#actions details { font-size: 12px; }
+#actions summary { cursor: pointer; padding: 4px; }
+#browser-instructions { color: var(--muted); }

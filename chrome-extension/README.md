@@ -1,31 +1,56 @@
 # halfbold Chrome extension
 
-Applies the half-bold fonts built by this repo to every website.
+Applies locally installed Half fonts to websites, with live updates to open tabs.
 
-## Install
+## Desktop setup
+
+Open the desktop app, select a font, and click **Use in browser**. The app builds
+and installs its Half font and uses it for text (or code for monospace fonts).
+**Choose slot** exposes the individual sans, serif and mono slots.
+
+On first use, the app opens Chrome and copies the extension folder path:
+
+1. Enable **Developer mode** in `chrome://extensions` and click **Load unpacked**.
+2. Press **Cmd+Shift+G**, paste, and select the folder.
+
+The app shows **Chrome connected · font settings received** after Chrome
+acknowledges the current settings. Font switches then update open pages without
+refreshing. Chrome's own pages, the Chrome Web Store and other protected pages
+cannot be styled. Closed shadow roots are inaccessible.
+
+If upgrading from the older extension, remove the old halfbold entry before
+loading this version. The extension now has a stable ID and lives in
+`~/Library/Application Support/halfbold/browser/extension`.
+
+## Command-line setup
 
 ```sh
 ./chrome-extension/install.sh
 ```
 
-Chrome 137+ removed the `--load-extension` flag, and only managed (MDM) Macs can force-install extensions by policy, so the first load is two clicks in `chrome://extensions`. The script opens that page, copies the folder path to the clipboard, and prints the two clicks.
+This performs the same setup. Existing commands such as
+`uv run halfbold --sans "Inter"` also deliver live updates.
 
-## Reloading
+## Connection
 
-Never needed by hand. `autoreload.js` runs as the background service worker, hashes the extension's own files every 30 seconds, and calls `chrome.runtime.reload()` when they change. Edit `halfbold.css`, wait up to 30 seconds, refresh the page.
+Setup registers `com.jorden.halfbold` as a Chrome native messaging host for this
+extension only. Chrome starts a small Python process that watches the source CSS
+and pushes changes within 150 ms of detecting them. The extension caches the
+latest stylesheet, updates open tabs and frames, and updates adopted stylesheets
+in open shadow roots. No local HTTP server is needed. Chrome owns the connection,
+so the desktop app can be closed while browsing.
 
-## Change the fonts
+Connection status expires after six seconds without a heartbeat. It confirms
+receipt of settings by the extension, not that every website permits styling.
+The helper uses this checkout's Python interpreter and CSS path. After moving the
+checkout or replacing its environment, run **Chrome setup** again.
 
-Run `uv run halfbold --sans FAMILY`, `--serif FAMILY`, or `--mono FAMILY` (any combination in one call) to point a slot at a different installed Half font; each rewrites the matching variable at the top of `halfbold.css`. Swap the sans rule's variable to `--halfbold-serif` to read everything in serif.
+## Extension development
 
-## Limit to some sites
+Run setup again to copy extension code changes to the installed folder, then
+click **Reload** on the extension in Chrome. Font choices update live; JavaScript
+and manifest edits require an extension reload. With a checkout loaded directly,
+register the host through setup and reload that extension instead.
 
-Edit `matches` in `manifest.json`, e.g. `["https://*.wikipedia.org/*", "https://news.ycombinator.com/*"]`.
-
-## Why the `text-rendering` rule
-
-Some sites (GitHub among them) set `text-rendering: optimizeSpeed`, which makes Chrome skip contextual alternates entirely, so the font renders plain. The extension forces `optimizeLegibility` and `calt` on everywhere.
-
-## Shadow DOM
-
-Some sites render code blocks inside shadow roots (MDN's `<mdn-code-example>`, for one), where page CSS never reaches. `shadow.js` adopts the same stylesheet into every open shadow root it finds, and keeps watching for new ones. Closed shadow roots stay out of reach.
+Some sites set `text-rendering: optimizeSpeed`, which skips contextual alternates.
+The stylesheet forces `optimizeLegibility` and `calt` to preserve half-bold text.

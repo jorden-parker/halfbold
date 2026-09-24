@@ -1,25 +1,44 @@
 {
   "manifest_version": 3,
   "name": "halfbold",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Render every website in a locally installed half-bold reading font",
-  "permissions": ["alarms", "storage"],
+  "permissions": [
+    "alarms",
+    "storage",
+    "nativeMessaging",
+    "scripting"
+  ],
   "background": {
     "service_worker": "autoreload.js"
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "css": ["halfbold.css"],
-      "js": ["shadow.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "css": [
+        "halfbold.css"
+      ],
+      "js": [
+        "shadow.js"
+      ],
       "run_at": "document_start",
       "all_frames": true
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["halfbold.css"],
-      "matches": ["<all_urls>"]
+      "resources": [
+        "halfbold.css"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
+  ],
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyHjg2x73B2t/NFlX/9BREXDfIw3z9Vd1fWyMeBeKQcNj2Fu/HzkZ6nzYeAKUChl4DmkLdxrAfib8kbT17cKfx7XrtaVIrBYUp5ZceaFJ/x1hU+8WX7kh2XyMTzCGAd0ZPNY3OaD3KWMlJCvBqL4izscBWuaS8AauEtkZazTllUoOLPtn7FOLuEnZZOlwdyRqO/ZsIBYP3Ri/P3eoiXA7m8ToOquoGY4jgzwwgqi2Lxb3fVsW/UQRSfqaJ9OdLAfbmQK5vFzWyoiTr7s1Y0ULADoSnsMH5gGj86uGdeq7ZLfDFyC9VH6Vo4ePes+T8/jOQk0kAzui84whpYKwu4M4cwIDAQAB",
+  "host_permissions": [
+    "<all_urls>"
   ]
 }

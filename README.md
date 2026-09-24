@@ -44,15 +44,15 @@ go run -C tui . -project ..
 
 `-fonts DIR` (repeatable) scans other directories; `-out-dir DIR` writes the `-Half.ttf` somewhere other than next to the source font.
 
-Each row shows the font's kind (`sans`, `serif`, `mono`). Press `s` on a row to make its Half font the Chrome extension's font for that kind (`1`/`2`/`3` pick a different slot); this runs `halfbold --sans/--serif/--mono` and the extension reloads itself within 30 seconds.
+Each row shows the font's kind (`sans`, `serif`, `mono`). Press `s` on a row to make its Half font the Chrome extension's font for that kind (`1`/`2`/`3` pick a different slot); this runs `halfbold --sans/--serif/--mono` and the connected extension updates open pages immediately.
 
 Press `p` to preview the highlighted font: the sample paragraph is drawn into the terminal half-bold and plain (see the `--preview` section below for terminal requirements); enter brings the picker back. In the Homebrew list, `p` previews the cask before installing it (Google Fonts casks fetch only the needed files; other casks are downloaded to Homebrew's cache with `brew fetch`).
 
 Press `i` to install a font from a Homebrew cask (`brew search --cask font-`) without leaving the picker. After `brew install --cask` finishes, the new font is converted straight away; when a cask ships several families you pick one first.
 
 Point the Chrome extension at a different Half font. Each web page slot
-(`sans`, `serif`, `mono`) maps to one installed Half family; the extension
-reloads itself within 30 seconds:
+(`sans`, `serif`, `mono`) maps to one installed Half family; the connected extension
+updates open pages immediately:
 
 ```sh
 uv run halfbold list                            # shows each family's kind
@@ -96,6 +96,14 @@ uv run halfbold ~/Library/Fonts/InterVariable.ttf -o ~/Library/Fonts/Inter-Half.
 Install the output, then turn on contextual alternates (`calt`) in the app. Most apps have it on by default. In CSS: `font-feature-settings: "calt"`. The source font's own OpenType features (coding ligatures such as `->` and `!=`, stylistic sets) are kept.
 
 ## App
+
+For browser fonts, select a font and click **Use in browser**. It builds and
+installs the Half font, then applies it to browser text (or code for monospace).
+First use guides you through loading the Chrome extension. The connection status
+confirms when Chrome receives your settings; later font switches update open
+pages without refreshing. **Choose slot** exposes the individual slots.
+See [browser setup](chrome-extension/README.md) for upgrades and troubleshooting.
+
 
 A small Tauri window that lists every convertible font, previews the real
 half-bold result next to the plain font, builds the Half twin, installs

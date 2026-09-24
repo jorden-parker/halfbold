@@ -1,23 +1,10 @@
 #!/bin/sh
 set -e
-dir="$(cd "$(dirname "$0")" && pwd)"
-printf '%s' "$dir" | pbcopy
-osascript <<'EOF'
-tell application "Google Chrome"
-  activate
-  if (count of windows) = 0 then make new window
-  make new tab at end of tabs of front window with properties {URL:"chrome://extensions"}
-end tell
-EOF
-cat <<MSG
-Folder path copied to clipboard:
-  $dir
-
-In the chrome://extensions tab that just opened:
-  1. Turn on "Developer mode" (toggle, top right).
-  2. Click "Load unpacked". In the file dialog press Cmd+Shift+G,
-     paste, press Enter, then click "Select".
-
-That is the only manual step, ever. From then on the extension checks its
-own files every 30 seconds and reloads itself when they change.
+root="$(cd "$(dirname "$0")/.." && pwd)"
+uv run --project "$root" halfbold-api browser --setup
+cat <<'MSG'
+In Chrome, enable Developer mode and click Load unpacked.
+Press Cmd+Shift+G, paste the copied folder path, then select it.
+Remove the old halfbold extension first if upgrading from an earlier version.
+Once connected, font changes reach open pages without refreshing.
 MSG
