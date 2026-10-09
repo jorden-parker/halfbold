@@ -141,7 +141,10 @@ cask previews once per machine. Sliders above the specimen set the bold
 share, the shortest word that gets bolded, and the plain and bold weights.
 The weight sliders work for every font: for a static family each one names
 the installed face it snapped to, and the note lists the weights that family
-ships. They are saved to
+ships. Dragging a slider only moves its number; the font rebuilds when you
+let go, so a drag costs one build, and the specimen dims until it matches
+again. Stops that resolve to the same pair of faces share one build, so
+sliding back over a value you have already seen is instant. They are saved to
 `~/Library/Application Support/halfbold/settings.json`, which the CLI and the
 launchd watcher read too, so every rebuild uses the same choices.
 
