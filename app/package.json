@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "bun run dev.ts",
     "build": "tsc && bun build ./index.html --outdir dist --minify",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test": "bun test"
   },
   "dependencies": {
     "@tauri-apps/api": "^2"

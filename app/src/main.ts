@@ -17,7 +17,8 @@ import {
   type Settings,
   type WebFonts,
 } from "./api";
-import { faceAlias, loadFace } from "./fonts";
+import { faceAlias, loadFace, retireFace } from "./fonts";
+import { createSequencer } from "./sequence";
 
 const DEFAULT_SAMPLE_TEXT =
   "The quick brown fox jumps over the lazy dog. Reading gets faster when " +
@@ -31,6 +32,7 @@ type Selection = { tab: "installed"; candidate: Candidate } | { tab: "brew"; tok
 
 interface State {
   tab: Tab;
+  fontsDir: string | null;
   candidates: Candidate[];
   caskEntries: CaskEntry[] | null;
   caskFaces: Map<string, string | null>;
@@ -38,15 +40,17 @@ interface State {
   caskPrefetch: Set<string>;
   selected: Selection;
   web: WebFonts | null;
-  busy: string | null;
   sampleText: string;
   settings: Settings | null;
   defaults: Settings | null;
-  previewed: { key: string; candidate: Candidate } | null;
+  draft: Settings | null;
+  gen: number;
+  previewed: { key: string; gen: number; candidate: Candidate } | null;
 }
 
 const state: State = {
   tab: "installed",
+  fontsDir: null,
   candidates: [],
   caskEntries: null,
   caskFaces: new Map(),
@@ -54,10 +58,11 @@ const state: State = {
   caskPrefetch: new Set(),
   selected: null,
   web: null,
-  busy: null,
   sampleText: loadSampleText(),
   settings: null,
   defaults: null,
+  draft: null,
+  gen: 0,
   previewed: null,
 };
 
@@ -110,42 +115,65 @@ function saveSampleText(text: string) {
   }
 }
 
-function setBusy(label: string | null) {
-  state.busy = label;
-  statusEl.classList.remove("error");
-  statusEl.textContent = label ?? "";
+const liveTasks = new Map<number, string>();
+let lastTask = 0;
+let errorText: string | null = null;
+
+function renderStatus() {
+  const labels = Array.from(liveTasks.values());
+  const label = labels.length > 0 ? labels[labels.length - 1] : null;
+  statusEl.classList.toggle("error", label === null && errorText !== null);
+  statusEl.textContent = label ?? errorText ?? "";
   for (const button of actionsEl.querySelectorAll("button")) {
-    button.disabled = label !== null || button.dataset.locked === "true";
+    button.disabled = liveTasks.size > 0 || button.dataset.locked === "true";
   }
 }
 
+function busy(): boolean {
+  return liveTasks.size > 0;
+}
+
 function showError(message: string) {
-  statusEl.classList.add("error");
+  errorText = message;
+  renderStatus();
+}
+
+function showNote(message: string) {
+  errorText = null;
+  statusEl.classList.remove("error");
   statusEl.textContent = message;
 }
 
 async function run<T>(label: string, task: () => Promise<T>): Promise<T | null> {
-  setBusy(label);
+  lastTask += 1;
+  const token = lastTask;
+  liveTasks.set(token, label);
+  errorText = null;
+  renderStatus();
   try {
-    const result = await task();
-    setBusy(null);
-    return result;
+    return await task();
   } catch (err) {
-    setBusy(null);
     showError(String(err));
     return null;
+  } finally {
+    liveTasks.delete(token);
+    renderStatus();
   }
 }
 
 function selectionKey(selection: Selection): string {
   if (!selection) return "";
   return selection.tab === "installed"
-    ? `installed:${selection.candidate.regular}`
+    ? `installed:${selection.candidate.family}`
     : `brew:${selection.token}`;
 }
 
 function stillSelected(selection: Selection): boolean {
   return selectionKey(selection) === selectionKey(state.selected);
+}
+
+function isCurrent(key: string, gen: number): boolean {
+  return key === selectionKey(state.selected) && gen === state.gen;
 }
 
 function renderSlots() {
@@ -203,7 +231,7 @@ function renderList() {
       stateSpan.className = `state ${c.built ? (c.stale ? "stale" : "built") : ""}`;
       stateSpan.textContent = c.built ? (c.stale ? "outdated" : "Half") : "";
       li.append(nameSpan, kindSpan, stateSpan);
-      if (state.selected?.tab === "installed" && state.selected.candidate.regular === c.regular) {
+      if (state.selected?.tab === "installed" && state.selected.candidate.family === c.family) {
         li.classList.add("selected");
       }
       li.addEventListener("click", () => select({ tab: "installed", candidate: c }));
@@ -337,6 +365,13 @@ function showPending(message: string) {
   halfNoteEl.textContent = "";
 }
 
+const LIST_REFRESH_DELAY = 750;
+const settingsRuns = createSequencer();
+const previewRuns = createSequencer();
+const listRuns = createSequencer();
+let listTimer: ReturnType<typeof setTimeout> | null = null;
+let shownHalf: string | null = null;
+
 function knobValue(name: keyof typeof knobs, value: number): string {
   if (name === "bold_share") return `${Math.round(value * 100)}%`;
   if (name === "min_word_length") return `${value}`;
@@ -354,14 +389,21 @@ function tuningNote(candidate: Candidate | undefined): string {
   return `${base} ${candidate.family} ships ${faces}; each weight snaps to the nearest.`;
 }
 
-function renderTuning() {
-  if (!state.settings) return;
+function renderKnobs(from: Settings) {
+  state.draft = from;
   for (const [name, knob] of Object.entries(knobs) as [keyof typeof knobs, (typeof knobs)[keyof typeof knobs]][]) {
-    const value = state.settings[name];
+    const value = from[name];
     knob.input.value = String(name === "bold_share" ? Math.round(value * 100) : value);
     knob.out.value = knobValue(name, value);
   }
-  const candidate = state.selected?.tab === "installed" ? state.selected.candidate : state.previewed?.candidate;
+}
+
+function selectedCandidate(): Candidate | undefined {
+  if (state.selected?.tab === "installed") return state.selected.candidate;
+  return state.previewed?.candidate;
+}
+
+function renderFaceLabels(candidate: Candidate | undefined = selectedCandidate()) {
   weightTicksEl.replaceChildren(
     ...(candidate?.faces ?? []).map((face) => {
       const option = document.createElement("option");
@@ -375,71 +417,93 @@ function renderTuning() {
   tuningNoteEl.textContent = tuningNote(candidate);
 }
 
-let tuningTimer: ReturnType<typeof setTimeout> | null = null;
-
-function onTuningInput(event: Event) {
+function onKnobInput(event: Event) {
   const input = event.target as HTMLInputElement;
   const name = input.name as keyof typeof knobs;
+  const base = state.draft ?? state.settings;
+  if (!base) return;
   const raw = Number(input.value);
   const value = name === "bold_share" ? raw / 100 : raw;
+  state.draft = { ...base, [name]: value };
   knobs[name].out.value = knobValue(name, value);
-  if (tuningTimer) clearTimeout(tuningTimer);
-  tuningTimer = setTimeout(() => void saveTuning({ [name]: value }), 250);
 }
 
-async function saveTuning(values: Partial<Settings>) {
-  const result = await run("Saving settings…", async () => ({
-    saved: await settingsApi(values),
-    fonts: await installed(),
-  }));
-  if (!result) return;
-  state.settings = result.saved.settings;
-  state.defaults = result.saved.defaults;
-  state.candidates = result.fonts.candidates;
-  renderList();
-  await reselectForSettings();
-  renderTuning();
-  await refreshPreview();
+function onKnobChange() {
+  if (state.draft) commitSettings(state.draft);
 }
 
-async function reselectForSettings() {
-  const selection = state.selected;
-  if (selection?.tab === "installed") {
-    const family = selection.candidate.family;
-    const updated = state.candidates.find((candidate) => candidate.family === family);
-    if (updated) state.selected = { tab: "installed", candidate: updated };
-    return;
-  }
-  if (!selection || state.previewed?.key !== selectionKey(selection)) return;
-  const family = state.previewed.candidate.family;
-  const refreshed = await caskFonts(selection.token).catch(() => null);
-  const updated = refreshed?.candidates.find((candidate) => candidate.family === family);
-  if (updated) state.previewed = { key: state.previewed.key, candidate: updated };
+function commitSettings(values: Settings) {
+  state.gen += 1;
+  const gen = state.gen;
+  state.draft = values;
+  markRebuilding();
+  settingsRuns.run(async () => {
+    const result = await run("Saving settings…", () => settingsApi(values));
+    if (!result || gen !== state.gen) return;
+    state.settings = result.settings;
+    state.defaults = result.defaults;
+    refreshPreview(gen);
+    scheduleListRefresh();
+  });
 }
 
-async function refreshPreview() {
+function markRebuilding() {
+  if (sampleHalfEl.classList.contains("pending")) return;
+  sampleHalfEl.classList.add("rebuilding");
+  samplePlainEl.classList.add("rebuilding");
+  halfNoteEl.textContent = "rebuilding…";
+}
+
+function scheduleListRefresh() {
+  if (listTimer) clearTimeout(listTimer);
+  listTimer = setTimeout(() => {
+    listTimer = null;
+    listRuns.run(async () => {
+      const result = await installed().catch(() => null);
+      if (!result) return;
+      state.fontsDir = result.fonts_dir;
+      state.candidates = result.candidates;
+      renderList();
+    });
+  }, LIST_REFRESH_DELAY);
+}
+
+function refreshPreview(gen: number) {
   const selection = state.selected;
   if (!selection) return;
   if (selection.tab === "installed") {
-    renderInstalledActions(selection.candidate);
-    await previewCandidate(selection.candidate, selection);
+    schedulePreview(selection.candidate, selection, gen);
   } else if (state.previewed?.key === selectionKey(selection)) {
-    await previewCandidate(state.previewed.candidate, selection);
+    schedulePreview(state.previewed.candidate, selection, gen);
   }
 }
 
-async function previewCandidate(c: Candidate, selection: Selection) {
-  const p = await run(`Previewing ${c.family}…`, () => preview(c));
-  if (!p || !stillSelected(selection)) return;
-  state.previewed = { key: selectionKey(selection), candidate: c };
-  renderTuning();
-  await renderSamples(p.regular, p.half, selection);
+function schedulePreview(c: Candidate, selection: Selection, gen: number) {
+  const key = selectionKey(selection);
+  const installedTab = selection?.tab === "installed";
+  previewRuns.run(async () => {
+    if (!isCurrent(key, gen)) return;
+    const p = await run(`Previewing ${c.family}…`, () =>
+      preview(c, installedTab ? (state.fontsDir ?? undefined) : undefined),
+    );
+    if (!p || !isCurrent(key, gen)) return;
+    state.previewed = { key, gen, candidate: p };
+    if (installedTab) {
+      state.selected = { tab: "installed", candidate: p };
+      renderInstalledActions(p);
+    }
+    renderFaceLabels(p);
+    await renderSamples(p.regular, p.half, key, gen);
+  });
 }
 
-async function renderSamples(regular: string, half: string, selection: Selection) {
+async function renderSamples(regular: string, half: string, key: string, gen: number) {
   const [halfAlias, plainAlias] = await Promise.all([loadFace(half), faceAlias(regular)]);
-  if (!stillSelected(selection)) return;
-  sampleHalfEl.classList.remove("pending");
+  if (!isCurrent(key, gen)) return;
+  if (shownHalf && shownHalf !== half) retireFace(shownHalf);
+  shownHalf = half;
+  sampleHalfEl.classList.remove("pending", "rebuilding");
+  samplePlainEl.classList.remove("rebuilding");
   sampleHalfEl.style.fontFamily = halfAlias;
   sampleHalfEl.style.fontFeatureSettings = '"calt" 1';
   sampleHalfEl.textContent = state.sampleText;
@@ -495,26 +559,26 @@ async function renderInstalledDetail(c: Candidate) {
   });
   metaEl.textContent = `${c.kind}, ${pairDescription(c)}. ${fileNames(c)}`;
   renderInstalledActions(c);
-  renderTuning();
+  renderFaceLabels(c);
   showPending("Preparing preview…");
-  await previewCandidate(c, selection);
+  schedulePreview(c, selection, state.gen);
 }
 
 async function onBuild(c: Candidate) {
   const result = await run(`Building ${c.family} Half…`, () => build(c));
   if (!result) return;
   await reloadInstalled();
-  const updated = state.candidates.find((x) => x.regular === c.regular);
+  const updated = state.candidates.find((x) => x.family === c.family);
   if (updated) {
     state.selected = { tab: "installed", candidate: updated };
     renderList();
     renderInstalledActions(updated);
-    statusEl.textContent = `Built ${updated.family} Half.`;
+    showNote(`Built ${updated.family} Half.`);
   }
 }
 
 async function onUseAs(kind: Kind, c: Candidate) {
-  if (state.busy) return;
+  if (busy()) return;
   const result = await run(`Applying ${c.family} to browser…`, async () => {
     await build(c);
     const web = await webFonts(kind, c.family);
@@ -528,20 +592,25 @@ async function onUseAs(kind: Kind, c: Candidate) {
   renderSlots();
   renderList();
   if (state.selected?.tab === "installed") {
-    const selectedPath = state.selected.candidate.regular;
-    const updated = state.candidates.find((candidate) => candidate.regular === selectedPath);
+    const family = state.selected.candidate.family;
+    const updated = state.candidates.find((candidate) => candidate.family === family);
     if (updated) state.selected = { tab: "installed", candidate: updated };
     if (state.selected?.tab === "installed") renderInstalledActions(state.selected.candidate);
   }
-  statusEl.textContent = `${c.family} Half saved for browser ${kind === "mono" ? "code" : "text"}.`;
+  showNote(`${c.family} Half saved for browser ${kind === "mono" ? "code" : "text"}.`);
   showBrowserStatus(result.connection);
   if (!result.connection.configured) await setupChrome();
+  scheduleBrowserCheck(0);
 }
 
 const browserStatusEl = $("#browser-status");
 const browserInstructionsEl = $("#browser-instructions");
 const setupChromeEl = $<HTMLButtonElement>("#setup-chrome");
 let checkingBrowser = false;
+let browserSettled = false;
+let browserTimer: ReturnType<typeof setTimeout> | null = null;
+const BROWSER_POLL = 5000;
+const BROWSER_POLL_SETTLED = 15000;
 
 function showBrowserStatus(status: Awaited<ReturnType<typeof browserStatus>>) {
   browserStatusEl.textContent = status.synced
@@ -557,12 +626,26 @@ async function refreshBrowserStatus() {
   if (checkingBrowser) return;
   checkingBrowser = true;
   try {
-    showBrowserStatus(await browserStatus());
+    const status = await browserStatus();
+    showBrowserStatus(status);
+    browserSettled = status.synced;
   } catch {
     browserStatusEl.textContent = "Could not check Chrome connection";
+    browserSettled = false;
   } finally {
     checkingBrowser = false;
   }
+}
+
+function scheduleBrowserCheck(delay = BROWSER_POLL) {
+  if (browserTimer) clearTimeout(browserTimer);
+  browserTimer = setTimeout(() => {
+    browserTimer = null;
+    void (async () => {
+      if (!document.hidden && !busy()) await refreshBrowserStatus();
+      scheduleBrowserCheck(browserSettled ? BROWSER_POLL_SETTLED : BROWSER_POLL);
+    })();
+  }, delay);
 }
 
 async function setupChrome() {
@@ -580,7 +663,10 @@ async function setupChrome() {
 }
 setupChromeEl.addEventListener("click", () => void setupChrome());
 void refreshBrowserStatus();
-setInterval(() => void refreshBrowserStatus(), 2000);
+scheduleBrowserCheck();
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) scheduleBrowserCheck(0);
+});
 
 async function renderBrewDetail(token: string) {
   const selection: Selection = { tab: "brew", token };
@@ -590,7 +676,7 @@ async function renderBrewDetail(token: string) {
   metaEl.textContent = `Homebrew cask ${token}`;
   actionsEl.textContent = "";
   actionsEl.append(makeButton("Install and build Half", () => onInstallCask(token), "primary"));
-  renderTuning();
+  renderFaceLabels();
   if (entry?.google || state.caskPrefetch.has(token)) {
     showPending("Downloading from Google Fonts…");
     await previewCask(token, selection);
@@ -620,7 +706,7 @@ async function previewCask(token: string, selection: Selection) {
   applyCaskFace(token, alias);
   if (!stillSelected(selection)) return;
   titleEl.style.fontFamily = alias;
-  await previewCandidate(first, selection);
+  schedulePreview(first, selection, state.gen);
 }
 
 async function onInstallCask(token: string) {
@@ -634,7 +720,7 @@ async function onInstallCask(token: string) {
   await reloadInstalled();
   state.tab = "installed";
   renderTabs();
-  const selected = first ? state.candidates.find((x) => x.regular === first.regular) : undefined;
+  const selected = first ? state.candidates.find((x) => x.family === first.family) : undefined;
   state.selected = selected ? { tab: "installed", candidate: selected } : null;
   renderList();
   await renderDetail();
@@ -657,7 +743,10 @@ async function renderDetail() {
 
 async function reloadInstalled() {
   const result = await run("Loading fonts…", () => installed());
-  if (result) state.candidates = result.candidates;
+  if (result) {
+    state.candidates = result.candidates;
+    state.fontsDir = result.fonts_dir;
+  }
   renderList();
 }
 
@@ -701,11 +790,14 @@ function moveSelection(delta: number) {
 
 function setupTuning() {
   for (const knob of Object.values(knobs)) {
-    knob.input.addEventListener("input", onTuningInput);
+    knob.input.addEventListener("input", onKnobInput);
+    knob.input.addEventListener("change", onKnobChange);
   }
   tuningEl.addEventListener("submit", (event) => event.preventDefault());
   resetTuningEl.addEventListener("click", () => {
-    if (state.defaults) void saveTuning(state.defaults);
+    if (!state.defaults) return;
+    renderKnobs(state.defaults);
+    commitSettings(state.defaults);
   });
 }
 
@@ -760,14 +852,18 @@ function init() {
       run("Loading slots…", () => webFonts()),
       run("Loading settings…", () => settingsApi()),
     ]);
-    if (installedResult) state.candidates = installedResult.candidates;
+    if (installedResult) {
+      state.candidates = installedResult.candidates;
+      state.fontsDir = installedResult.fonts_dir;
+    }
     if (webResult) state.web = webResult;
     if (settingsResult) {
       state.settings = settingsResult.settings;
       state.defaults = settingsResult.defaults;
+      renderKnobs(settingsResult.settings);
     }
     renderSlots();
-    renderTuning();
+    renderFaceLabels();
     const first = state.candidates[0];
     state.selected = first ? { tab: "installed", candidate: first } : null;
     renderList();

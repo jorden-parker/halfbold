@@ -289,10 +289,10 @@ main {
 }
 
 .tuning {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   align-items: center;
-  gap: 8px 28px;
+  gap: 10px 28px;
   margin: -8px 0 28px;
   padding: 12px 14px;
   border-radius: 8px;
@@ -301,7 +301,7 @@ main {
 
 .knob {
   display: grid;
-  grid-template-columns: auto 120px 3.5em;
+  grid-template-columns: auto minmax(140px, 1fr) 3.5em;
   align-items: center;
   gap: 8px;
   font-size: 12px;
@@ -314,6 +314,7 @@ main {
 
 .knob input {
   margin: 0;
+  min-width: 0;
   accent-color: var(--accent);
 }
 
@@ -323,7 +324,7 @@ main {
 }
 
 .knob-weight {
-  grid-template-columns: auto 120px 3.5em auto;
+  grid-template-columns: auto minmax(140px, 1fr) 3.5em auto;
 }
 
 .knob-face {
@@ -331,10 +332,14 @@ main {
   font-variant-numeric: tabular-nums;
 }
 
+#reset-tuning {
+  justify-self: start;
+}
+
 .tuning-note {
+  grid-column: 1 / -1;
   font-size: 11px;
   color: var(--faint);
-  margin-left: auto;
 }
 
 .specimens {
@@ -365,6 +370,10 @@ main {
   user-select: text;
   cursor: text;
   overflow-wrap: anywhere;
+}
+
+.sample.rebuilding {
+  opacity: 0.5;
 }
 
 .sample.pending {

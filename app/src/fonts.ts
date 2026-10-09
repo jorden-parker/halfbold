@@ -38,3 +38,11 @@ export function faceAlias(path: string): Promise<string> {
   if (faces.has(path)) return Promise.resolve(aliasFor(path));
   return loadFace(path);
 }
+
+export function retireFace(path: string) {
+  const face = faces.get(path);
+  if (!face) return;
+  document.fonts.delete(face);
+  faces.delete(path);
+  aliases.delete(path);
+}
