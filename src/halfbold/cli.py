@@ -36,9 +36,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog=f"halfbold {command}" if command else "halfbold",
         description=(
-            "Merge a Regular and a Bold TTF, or instance a variable TTF at two "
-            "weights, into one font whose calt feature bolds the first half of "
-            "every word. Use sync to build missing or stale Half fonts, "
+            "Merge two weights of a font family, or instance a variable TTF at "
+            "two weights, into one font whose calt feature bolds the first half "
+            "of every word. Use sync to build missing or stale Half fonts, "
             "rebuild to regenerate all of them, list to show the build plan, "
             "or desktop to launch the desktop app."
         ),
@@ -119,13 +119,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--regular-weight",
         type=float,
         default=settings.regular_weight,
-        help="wght value for the plain letters when instancing a variable font",
+        help=(
+            "Target weight for the plain letters: the wght instance of a "
+            "variable font, or the nearest installed face of a static family. "
+            "Ignored when you name two font files yourself."
+        ),
     )
     parser.add_argument(
         "--bold-weight",
         type=float,
         default=settings.bold_weight,
-        help="wght value for the bold letters when instancing a variable font",
+        help=(
+            "Target weight for the bold letters: the wght instance of a "
+            "variable font, or the nearest installed face of a static family. "
+            "Ignored when you name two font files yourself."
+        ),
     )
     parser.add_argument(
         "--max-word-length",

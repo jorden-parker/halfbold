@@ -3,6 +3,12 @@ import { invoke } from "@tauri-apps/api/core";
 export type Kind = "sans" | "serif" | "mono";
 export const KINDS: Kind[] = ["sans", "serif", "mono"];
 
+export interface Face {
+  path: string;
+  style: string;
+  weight: number;
+}
+
 export interface Candidate {
   family: string;
   kind: Kind;
@@ -11,6 +17,12 @@ export interface Candidate {
   output: string;
   built: boolean;
   stale: boolean;
+  faces: Face[];
+  plain_face: Face | null;
+  bold_face: Face | null;
+  plain_weight: number | null;
+  bold_weight: number | null;
+  faces_label: string | null;
 }
 
 export interface CaskEntry {

@@ -322,8 +322,13 @@ main {
   font-variant-numeric: tabular-nums;
 }
 
-.knob.disabled {
-  opacity: 0.4;
+.knob-weight {
+  grid-template-columns: auto 120px 3.5em auto;
+}
+
+.knob-face {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .tuning-note {

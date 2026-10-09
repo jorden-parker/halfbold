@@ -25,6 +25,7 @@ from halfbold.cli import DEFAULT_CSS, DEFAULT_FONTS_DIR
 from halfbold.scan import (
     KINDS,
     Candidate,
+    Face,
     candidates_from_paths,
     find_installed_candidates,
     find_installed_half_families,
@@ -44,6 +45,12 @@ CACHE_DIR = default_cache_dir()
 CASK_INDEX_CACHE = "cask-index.json"
 
 
+def face_payload(face: Face | None) -> dict | None:
+    if face is None:
+        return None
+    return {"path": str(face.path), "style": face.style, "weight": face.weight}
+
+
 def candidate_payload(candidate: Candidate) -> dict:
     return {
         "family": candidate.family,
@@ -53,6 +60,12 @@ def candidate_payload(candidate: Candidate) -> dict:
         "output": str(candidate.output),
         "built": candidate.output.exists(),
         "stale": candidate.is_stale(),
+        "faces": [face_payload(face) for face in candidate.faces],
+        "plain_face": face_payload(candidate.plain_face),
+        "bold_face": face_payload(candidate.bold_face),
+        "plain_weight": candidate.plain_weight,
+        "bold_weight": candidate.bold_weight,
+        "faces_label": candidate.faces_label,
     }
 
 
@@ -86,7 +99,8 @@ def installed(args: argparse.Namespace) -> dict:
     return {
         "fonts_dir": str(args.fonts_dir),
         "candidates": [
-            candidate_payload(c) for c in find_installed_candidates(args.fonts_dir)
+            candidate_payload(c)
+            for c in find_installed_candidates(args.fonts_dir, load_settings())
         ],
     }
 
@@ -152,14 +166,14 @@ def unconvertible_reason(token: str, into: Path) -> str:
     described = "; ".join(
         f"{family} ({', '.join(styles)})" for family, styles in families.items()
     )
-    hint = "halfbold needs a Regular and Bold pair or a variable font"
+    hint = "halfbold needs two weights of the same family or a variable font"
     if all(p.suffix.lower() == ".otf" for p in files):
         hint += ", and .otf files with CFF outlines are not supported"
     return f"{token} only has {described}. {hint}."
 
 
 def cask_fonts(args: argparse.Namespace) -> dict:
-    candidates = candidates_from_paths(cached_cask_fonts(args.token))
+    candidates = candidates_from_paths(cached_cask_fonts(args.token), load_settings())
     if not candidates:
         raise ValueError(
             unconvertible_reason(args.token, CACHE_DIR / "casks" / args.token)
@@ -185,7 +199,9 @@ def cask_install(args: argparse.Namespace) -> dict:
     paths = installed_font_paths(cask_info(args.token), args.fonts_dir)
     return {
         "token": args.token,
-        "candidates": [candidate_payload(c) for c in candidates_from_paths(paths)],
+        "candidates": [
+            candidate_payload(c) for c in candidates_from_paths(paths, load_settings())
+        ],
     }
 
 

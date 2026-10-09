@@ -18,6 +18,13 @@ from halfbold.settings import (
 
 BOLD_SUFFIX = ".half"
 STYLE_SUFFIX = "Half"
+PLAIN_STYLE = "Regular"
+PLAIN_WEIGHT = 400
+FS_ITALIC = 0x01
+FS_BOLD = 0x20
+FS_REGULAR = 0x40
+MAC_BOLD = 0x01
+MAC_ITALIC = 0x02
 
 
 @dataclass(frozen=True)
@@ -221,15 +228,34 @@ def rename_font(font: TTFont) -> None:
     family = name_table.getBestFamilyName()
     base_family = " ".join(part for part in family.split() if part != "Variable")
     new_family = f"{base_family} {STYLE_SUFFIX}"
-    style = name_table.getDebugName(17) or name_table.getDebugName(2) or "Regular"
-    postscript = f"{new_family.replace(' ', '')}-{style.replace(' ', '')}"
-    full_name = f"{new_family} {style}"
+    postscript = f"{new_family.replace(' ', '')}-{PLAIN_STYLE}"
+    names = {
+        1: new_family,
+        16: new_family,
+        2: PLAIN_STYLE,
+        17: PLAIN_STYLE,
+        4: f"{new_family} {PLAIN_STYLE}",
+        6: postscript,
+        3: f"{postscript};{STYLE_SUFFIX}",
+    }
     for record in name_table.names:
-        if record.nameID in (1, 16):
-            record.string = new_family
-        elif record.nameID == 4:
-            record.string = full_name
-        elif record.nameID == 6:
-            record.string = postscript
-        elif record.nameID == 3:
-            record.string = f"{postscript};{STYLE_SUFFIX}"
+        if record.nameID in names:
+            record.string = names[record.nameID]
+    for source, twin in ((1, 16), (2, 17)):
+        for record in [r for r in name_table.names if r.nameID == source]:
+            name_table.setName(
+                names[twin], twin, record.platformID, record.platEncID, record.langID
+            )
+    for name_id, value in names.items():
+        if not name_table.getDebugName(name_id):
+            name_table.setName(value, name_id, 3, 1, 0x409)
+    for name_id in (21, 22):
+        name_table.removeNames(name_id)
+    reset_weight(font)
+
+
+def reset_weight(font: TTFont) -> None:
+    os2 = font["OS/2"]
+    os2.usWeightClass = PLAIN_WEIGHT
+    os2.fsSelection = (os2.fsSelection & ~(FS_BOLD | FS_ITALIC)) | FS_REGULAR
+    font["head"].macStyle &= ~(MAC_BOLD | MAC_ITALIC)

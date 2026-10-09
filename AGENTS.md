@@ -1,14 +1,15 @@
 # halfbold
 
-Personal Python CLI. Takes a Regular and a Bold TrueType font of the same family and writes one font whose `calt` OpenType feature renders the first half of every word in bold. This is the "bionic reading" effect, built like the Fast-Font project, but for any font pair on disk. It is not published to PyPI.
+Personal Python CLI. Takes two weights of the same TrueType family and writes one font whose `calt` OpenType feature renders the first half of every word in bold. This is the "bionic reading" effect, built like the Fast-Font project, but for any font pair on disk. It is not published to PyPI.
 
 ## How it works
 
-- A single variable font is instanced with `fontTools.varLib.instancer` at two weights first; a Regular + Bold pair is used as-is.
+- The Plain and Bold weights from `settings.py` pick the two source faces. A single variable font is instanced with `fontTools.varLib.instancer` at those two weights. A static family is scanned for every non-italic face of the family, each face's weight read from its style name (falling back to `OS/2.usWeightClass`), and `scan.resolve_pair` picks the nearest face to each weight; outlines are used as drawn, never interpolated or thickened. Naming two font files on the command line uses those two files verbatim and ignores the weights.
+- A static family is convertible as soon as it has two faces at different weights, so Light + Medium works; it no longer has to be a Regular + Bold pair.
 - `build.py` copies every letter glyph from the Bold font into the Regular font under a `.half` suffix, decomposing composites so no cross-font component references survive.
 - It then generates an OpenType feature file with two chained `calt` lookups. `MARK_STARTS` bolds the first letter of every subword (a run of letters split at camelCase boundaries: a capital after a lowercase letter, or the last capital of an acronym before a lowercase one). `COUNT` then matches each subword from its bold start, longest first, bolds the next `ceil(n * bold_share) - 1` letters, and un-bolds the start of any subword shorter than the shortest word.
 - `fontTools.feaLib` compiles that into a `GSUB` table. When the source font already has a scripted `GSUB`, `gsub.py` prepends the new lookups to it (so bolding runs before the font's own ligatures, and a bolded `fi` stays two letters), adds the `calt` lookups to every script and language, and keeps the feature list sorted. Coding ligatures like `->` therefore survive; `GPOS` (kerning) is kept as before.
-- The family name gets a ` Half` suffix so it installs next to the original.
+- The family name gets a ` Half` suffix so it installs next to the original, and `rename_font` forces the output to be the Regular face of that family (subfamily `Regular`, `usWeightClass` 400, the `OS/2.fsSelection` REGULAR bit set and the bold bits cleared) even when a Medium or Bold face supplied the plain outlines.
 
 ## Automation
 

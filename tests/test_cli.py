@@ -51,3 +51,21 @@ def test_bulk_commands_reject_font_paths(command, capsys):
 
     assert error.value.code == 2
     assert "use --fonts-dir" in capsys.readouterr().err
+
+
+def test_list_reports_the_resolved_faces(multi_weight_family: Path, capsys):
+    assert (
+        main(
+            [
+                "list",
+                "--fonts-dir",
+                str(multi_weight_family),
+                "--regular-weight",
+                "300",
+                "--bold-weight",
+                "700",
+            ]
+        )
+        == 0
+    )
+    assert "plain Light 300, bold Bold 700" in capsys.readouterr().out

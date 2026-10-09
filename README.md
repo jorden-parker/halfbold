@@ -1,6 +1,6 @@
 # halfbold
 
-Turn any Regular + Bold TrueType pair into a bionic-reading font.
+Turn any TrueType family with two weights into a bionic-reading font.
 
 ```sh
 uv run halfbold Inter-Regular.ttf Inter-Bold.ttf -o Inter-Half.ttf
@@ -36,7 +36,7 @@ terminal. The editable install follows changes in this checkout. Existing
 
 ## Interactive picker
 
-A small Bubble Tea TUI lists the Regular + Bold pairs and variable TrueType fonts in `~/Library/Fonts` and runs `halfbold` on the one you pick:
+A small Bubble Tea TUI lists the convertible families and variable TrueType fonts in `~/Library/Fonts` and runs `halfbold` on the one you pick:
 
 ```sh
 go run -C tui . -project ..
@@ -84,7 +84,24 @@ scripts/install-watcher.sh
 
 Log: `~/Library/Logs/halfbold.log`. The script prints the removal command.
 
-A single variable font is instanced at weight 400 and 700 (`--regular-weight`, `--bold-weight` to change). `--bold-share 0.4` bolds fewer letters per word and `--min-word-length 4` leaves short words plain; without flags, both come from the saved settings file. Output written into `~/Library/Fonts` is installed immediately on macOS.
+The plain and the bold letters are drawn at weight 400 and 700 by default
+(`--regular-weight`, `--bold-weight` to change). A variable font is instanced
+at those two weights. A static family uses the installed face nearest each
+weight, drawn as designed — nothing is interpolated or thickened — so a family
+shipping Thin through ExtraBold gives you eight choices and one shipping only
+Regular and Bold gives you those two. `halfbold list` names the faces it
+picked. Naming two font files yourself uses those files and ignores the
+weights.
+
+`--bold-share 0.4` bolds fewer letters per word and `--min-word-length 4`
+leaves short words plain; without flags, every value comes from the saved
+settings file. Output written into `~/Library/Fonts` is installed immediately
+on macOS.
+
+```sh
+uv run halfbold list --regular-weight 300 --bold-weight 800
+uv run halfbold rebuild --force --regular-weight 300 --bold-weight 800
+```
 
 Fonts from Homebrew work directly:
 
@@ -114,14 +131,17 @@ stays the only place with font logic. Homebrew casks are listed by font name
 are drawn in their own face; other casks pick up their face after a preview
 or install. The Homebrew list only shows casks halfbold can convert, judged
 from the font file names in the Homebrew index (TrueType, and either a
-variable font or a Regular plus Bold pair). Selecting an installed font or a
+variable font or a Regular plus Bold pair, so it can under-report families
+whose other weights halfbold could now use). Selecting an installed font or a
 Google Fonts cask previews it straight away; other casks show a "Download and
 preview" button because they ship as whole archives. The sample text is
 editable and remembered. Hovering a Google Fonts cask fetches it in the
 background, and every download lands in `~/Library/Caches/halfbold`, so a
 cask previews once per machine. Sliders above the specimen set the bold
-share, the shortest word that gets bolded and, for variable fonts, the plain
-and bold weights. They are saved to
+share, the shortest word that gets bolded, and the plain and bold weights.
+The weight sliders work for every font: for a static family each one names
+the installed face it snapped to, and the note lists the weights that family
+ships. They are saved to
 `~/Library/Application Support/halfbold/settings.json`, which the CLI and the
 launchd watcher read too, so every rebuild uses the same choices.
 

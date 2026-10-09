@@ -59,14 +59,17 @@
             </label>
             <label class="knob knob-weight">
               <span class="knob-name">Plain weight</span>
-              <input id="knob-regular" type="range" name="regular_weight" min="100" max="900" step="50" />
+              <input id="knob-regular" type="range" name="regular_weight" min="100" max="900" step="50" list="weight-ticks" />
               <output id="out-regular"></output>
+              <span id="face-regular" class="knob-face"></span>
             </label>
             <label class="knob knob-weight">
               <span class="knob-name">Bold weight</span>
-              <input id="knob-bold" type="range" name="bold_weight" min="100" max="900" step="50" />
+              <input id="knob-bold" type="range" name="bold_weight" min="100" max="900" step="50" list="weight-ticks" />
               <output id="out-bold"></output>
+              <span id="face-bold" class="knob-face"></span>
             </label>
+            <datalist id="weight-ticks"></datalist>
             <button id="reset-tuning" class="link" type="button">Reset</button>
             <span id="tuning-note" class="tuning-note"></span>
           </form>

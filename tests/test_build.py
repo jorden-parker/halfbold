@@ -134,3 +134,27 @@ def test_rejects_cff_like_font(font_pair: tuple[Path, Path], tmp_path: Path):
         assert "TrueType" in str(err)
     else:
         raise AssertionError("expected ValueError")
+
+
+def test_half_font_is_regular_whichever_face_built_it(multi_weight_family: Path):
+    plain = multi_weight_family / "Multi-Bold.ttf"
+    font = TTFont(plain)
+    font["OS/2"].fsSelection = (font["OS/2"].fsSelection & ~0x40) | 0x20
+    font["head"].macStyle |= 0x01
+    font.save(plain)
+    out = multi_weight_family / "Multi-Half.ttf"
+
+    build_halfbold_font(plain, multi_weight_family / "Multi-Medium.ttf", out)
+
+    half = TTFont(out)
+    name = half["name"]
+    assert name.getDebugName(1) == "Multi Half"
+    assert name.getDebugName(16) == "Multi Half"
+    assert name.getDebugName(2) == "Regular"
+    assert name.getDebugName(17) == "Regular"
+    assert name.getDebugName(4) == "Multi Half Regular"
+    assert name.getDebugName(6) == "MultiHalf-Regular"
+    assert half["OS/2"].usWeightClass == 400
+    assert half["OS/2"].fsSelection & 0x40
+    assert not half["OS/2"].fsSelection & 0x21
+    assert not half["head"].macStyle & 0x03

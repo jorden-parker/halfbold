@@ -31,7 +31,12 @@ def box_glyph(width: int):
 
 
 def make_font(
-    path: Path, family: str, style: str, stem: int, features: str = ""
+    path: Path,
+    family: str,
+    style: str,
+    stem: int,
+    features: str = "",
+    weight: int = 400,
 ) -> Path:
     names = [".notdef", "space", *LETTERS]
     cmap = {ord(" "): "space", **{ord(c): c for c in LETTERS}}
@@ -44,8 +49,10 @@ def make_font(
     builder.setupGlyf({n: box_glyph(stem if n != "space" else 0) for n in names})
     builder.setupHorizontalMetrics({n: (stem + 100, 0) for n in names})
     builder.setupHorizontalHeader(ascent=800, descent=-200)
-    builder.setupNameTable({"familyName": family, "styleName": style})
-    builder.setupOS2()
+    builder.setupNameTable(
+        {"familyName": family, "styleName": style, "typographicSubfamily": style}
+    )
+    builder.setupOS2(usWeightClass=weight)
     builder.setupPost()
     if features:
         addOpenTypeFeaturesFromString(builder.font, features, tables=["GSUB"])
@@ -92,3 +99,19 @@ def make_variable_font(path: Path, family: str) -> Path:
 @pytest.fixture
 def variable_font(tmp_path: Path) -> Path:
     return make_variable_font(tmp_path / "TestVar.ttf", "TestVar")
+
+
+MULTI_WEIGHTS = {"Light": 300, "Regular": 400, "Medium": 500, "Bold": 700}
+
+
+@pytest.fixture
+def multi_weight_family(tmp_path: Path) -> Path:
+    fonts = tmp_path / "multi"
+    fonts.mkdir()
+    for style, weight in MULTI_WEIGHTS.items():
+        make_font(
+            fonts / f"Multi-{style}.ttf", "Multi", style, weight // 2, weight=weight
+        )
+    make_font(fonts / "Multi-Italic.ttf", "Multi", "Italic", 200, weight=400)
+    make_font(fonts / "Solo-Regular.ttf", "Solo", "Regular", 200)
+    return fonts

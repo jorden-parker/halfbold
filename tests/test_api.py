@@ -170,7 +170,7 @@ def test_cask_fonts_explains_why_nothing_converts(monkeypatch, tmp_path: Path, c
 
     error = json.loads(capsys.readouterr().out)["error"]
     assert "Lonely (Regular)" in error
-    assert "Regular and Bold pair" in error
+    assert "two weights of the same family" in error
 
 
 def test_serve_answers_requests_by_id(tmp_path: Path):
@@ -457,3 +457,24 @@ def test_installed_custom_folder_stays_scoped(tmp_path, monkeypatch):
     monkeypatch.setattr(scan, "installed_font_dirs", lambda: [system])
 
     assert {c.family for c in scan.find_installed_candidates(fonts)} == {"Pair", "Var"}
+
+
+def test_installed_payload_reports_the_resolved_faces(
+    multi_weight_family: Path, monkeypatch, capsys
+):
+    path = multi_weight_family / "settings.json"
+    monkeypatch.setattr("halfbold.settings.default_settings_path", lambda: path)
+    assert (
+        main(["settings", json.dumps({"regular_weight": 300, "bold_weight": 500})]) == 0
+    )
+    capsys.readouterr()
+
+    assert main(["installed", "--fonts-dir", str(multi_weight_family)]) == 0
+
+    candidate = json.loads(capsys.readouterr().out)["candidates"][0]
+    assert Path(candidate["regular"]).name == "Multi-Light.ttf"
+    assert Path(candidate["bold"]).name == "Multi-Medium.ttf"
+    assert candidate["plain_face"]["weight"] == 300
+    assert candidate["bold_face"]["style"] == "Medium"
+    assert candidate["faces_label"] == "plain Light 300, bold Medium 500"
+    assert [f["weight"] for f in candidate["faces"]] == [300, 400, 500, 700]

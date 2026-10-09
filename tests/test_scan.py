@@ -6,11 +6,16 @@ from fontTools.ttLib import TTFont
 
 from halfbold.cli import main
 from halfbold.scan import (
+    Face,
     build_all,
     find_candidates,
     find_installed_half_families,
     font_kind,
+    nearest_face,
+    read_font_info,
+    resolve_pair,
 )
+from halfbold.settings import Settings
 
 
 def stamp_tables(path: Path, *, fixed_pitch: int = 0, serif_style: int = 0) -> None:
@@ -124,7 +129,11 @@ def test_build_all_reports_kind(tmp_path: Path):
     for line in build_all(fonts, dry_run=True):
         assert line.endswith("(sans)") or line.endswith("(mono)")
     assert any(
-        line == "would build Pair-Half.ttf  <- Pair (mono)"
+        line
+        == (
+            "would build Pair-Half.ttf  <- Pair  "
+            "plain Regular 400, bold Bold 700 (mono)"
+        )
         for line in build_all(fonts, dry_run=True)
     )
 
@@ -135,3 +144,107 @@ def test_installed_half_families(tmp_path: Path):
     build_all(fonts)
 
     assert find_installed_half_families(fonts) == {"Pair Half", "Var Half"}
+
+
+FACES = (
+    Face(Path("Multi-Light.ttf"), "Light", 300),
+    Face(Path("Multi-Regular.ttf"), "Regular", 400),
+    Face(Path("Multi-Medium.ttf"), "Medium", 500),
+    Face(Path("Multi-Bold.ttf"), "Bold", 700),
+)
+
+
+def test_nearest_face_picks_the_closest_weight():
+    assert nearest_face(FACES, 500, heavier_on_tie=True).style == "Medium"
+    assert nearest_face(FACES, 100, heavier_on_tie=True).style == "Light"
+    assert nearest_face(FACES, 900, heavier_on_tie=False).style == "Bold"
+
+
+def test_nearest_face_breaks_an_exact_tie_by_direction():
+    assert nearest_face(FACES, 450, heavier_on_tie=True).style == "Medium"
+    assert nearest_face(FACES, 450, heavier_on_tie=False).style == "Regular"
+
+
+def test_resolve_pair_keeps_the_two_faces_distinct():
+    plain, bold = resolve_pair(FACES, 500, 520)
+    assert (plain.style, bold.style) == ("Medium", "Bold")
+
+    plain, bold = resolve_pair(FACES, 700, 700)
+    assert (plain.style, bold.style) == ("Medium", "Bold")
+
+    plain, bold = resolve_pair(FACES, 300, 300)
+    assert (plain.style, bold.style) == ("Light", "Regular")
+
+
+def test_resolve_pair_honours_an_inverted_request():
+    plain, bold = resolve_pair(FACES, 700, 300)
+    assert (plain.style, bold.style) == ("Bold", "Light")
+
+
+def test_style_name_decides_the_weight_over_a_wrong_weight_class(tmp_path: Path):
+    path = make_font(tmp_path / "Odd-Bold.ttf", "Odd", "Bold", 200, weight=400)
+    assert read_font_info(path).weight == 700
+
+    path = make_font(tmp_path / "Odd-Cond.ttf", "Odd", "Condensed", 200, weight=600)
+    assert read_font_info(path).weight == 600
+
+
+def test_every_weight_of_a_family_becomes_a_face(multi_weight_family: Path):
+    found = {c.family: c for c in find_candidates(multi_weight_family)}
+
+    assert set(found) == {"Multi"}
+    assert [f.style for f in found["Multi"].faces] == [
+        "Light",
+        "Regular",
+        "Medium",
+        "Bold",
+    ]
+    assert found["Multi"].regular.name == "Multi-Regular.ttf"
+    assert found["Multi"].bold.name == "Multi-Bold.ttf"
+
+
+def test_weight_settings_choose_the_faces(multi_weight_family: Path):
+    settings = Settings(regular_weight=300, bold_weight=500)
+
+    found = {c.family: c for c in find_candidates(multi_weight_family, settings)}
+
+    assert found["Multi"].regular.name == "Multi-Light.ttf"
+    assert found["Multi"].bold.name == "Multi-Medium.ttf"
+    assert found["Multi"].faces_label == "plain Light 300, bold Medium 500"
+
+
+def test_build_all_reports_the_resolved_faces(multi_weight_family: Path):
+    settings = Settings(regular_weight=300, bold_weight=700)
+
+    report = build_all(multi_weight_family, dry_run=True, settings=settings)
+
+    assert any("plain Light 300, bold Bold 700" in line for line in report)
+
+
+def test_build_all_copies_glyphs_from_the_chosen_faces(multi_weight_family: Path):
+    build_all(
+        multi_weight_family, settings=Settings(regular_weight=300, bold_weight=700)
+    )
+    font = TTFont(multi_weight_family / "Multi-Half.ttf")
+    assert font["hmtx"]["a"][0] == 250
+    assert font["hmtx"]["a.half"][0] == 450
+
+    build_all(
+        multi_weight_family,
+        force=True,
+        settings=Settings(regular_weight=400, bold_weight=500),
+    )
+    font = TTFont(multi_weight_family / "Multi-Half.ttf")
+    assert font["hmtx"]["a"][0] == 300
+    assert font["hmtx"]["a.half"][0] == 350
+
+
+def test_variable_candidate_reports_its_clamped_weights(tmp_path: Path):
+    fonts = tmp_path / "fonts"
+    fonts.mkdir()
+    make_variable_font(fonts / "Var.ttf", "Var Variable")
+
+    found = {c.family: c for c in find_candidates(fonts, Settings(bold_weight=900))}
+
+    assert found["Var"].faces == ()
+    assert found["Var"].faces_label == "plain wght 400, bold wght 700"

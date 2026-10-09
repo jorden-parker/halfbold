@@ -4,12 +4,16 @@ Turns a font family into a twin whose `calt` feature bolds the first half of eve
 
 ## Language
 
+**Face**:
+One weight file of a family on disk, named by its style and its weight number: Regular 400, ExtraBold 800. Read from the style name, falling back to `OS/2.usWeightClass`.
+_Avoid_: variant, cut, weight file
+
 **Candidate**:
-A font family found on disk that can be converted: either a Regular and Bold pair or one variable font.
+A font family found on disk that can be converted: either two or more Faces at different weights, or one variable font.
 _Avoid_: font entry, source font
 
 **Half font**:
-The converted output of a Candidate, installed next to the original under the family name plus ` Half`.
+The converted output of a Candidate, installed next to the original under the family name plus ` Half`, always named Regular at weight 400 whichever Faces built it.
 _Avoid_: bionic font, output font, converted font
 
 **Preview**:
@@ -38,6 +42,10 @@ _Avoid_: category, class
 **Settings**:
 The one set of build choices applied to every Half font: Bold share, Shortest word, Plain and Bold weights, and the longest word that gets its own rule.
 _Avoid_: options, preferences, tuning (UI heading only)
+
+**Plain weight**, **Bold weight**:
+The weights the plain and the bold letters are drawn at. A variable font is instanced at them; a static family snaps each to its nearest Face.
+_Avoid_: regular weight, boldness (that is Bold share), thickness
 
 **Bold share**:
 The fraction of each word's letters drawn bold, counted from the start and rounded up, at least one letter.

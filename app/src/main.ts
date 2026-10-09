@@ -12,6 +12,7 @@ import {
   webFonts,
   type Candidate,
   type CaskEntry,
+  type Face,
   type Kind,
   type Settings,
   type WebFonts,
@@ -80,6 +81,11 @@ const resetSampleEl = $<HTMLButtonElement>("#reset-sample");
 const tuningEl = $<HTMLFormElement>("#tuning");
 const tuningNoteEl = $<HTMLSpanElement>("#tuning-note");
 const resetTuningEl = $<HTMLButtonElement>("#reset-tuning");
+const weightTicksEl = $<HTMLDataListElement>("#weight-ticks");
+const faceEls: Record<"regular_weight" | "bold_weight", HTMLSpanElement> = {
+  regular_weight: $("#face-regular"),
+  bold_weight: $("#face-bold"),
+};
 const knobs: Record<keyof Omit<Settings, "max_word_length">, { input: HTMLInputElement; out: HTMLOutputElement }> = {
   bold_share: { input: $("#knob-share"), out: $("#out-share") },
   min_word_length: { input: $("#knob-min"), out: $("#out-min") },
@@ -337,6 +343,17 @@ function knobValue(name: keyof typeof knobs, value: number): string {
   return `${Math.round(value)}`;
 }
 
+function faceLabel(face: Face | null | undefined): string {
+  return face ? `\u2192 ${face.style || "Regular"} ${face.weight}` : "";
+}
+
+function tuningNote(candidate: Candidate | undefined): string {
+  const base = "Applies to every font you build.";
+  if (!candidate || candidate.faces.length === 0) return base;
+  const faces = candidate.faces.map((face) => `${face.style || "Regular"} ${face.weight}`).join(", ");
+  return `${base} ${candidate.family} ships ${faces}; each weight snaps to the nearest.`;
+}
+
 function renderTuning() {
   if (!state.settings) return;
   for (const [name, knob] of Object.entries(knobs) as [keyof typeof knobs, (typeof knobs)[keyof typeof knobs]][]) {
@@ -345,14 +362,17 @@ function renderTuning() {
     knob.out.value = knobValue(name, value);
   }
   const candidate = state.selected?.tab === "installed" ? state.selected.candidate : state.previewed?.candidate;
-  const variable = candidate ? candidate.bold === null : true;
-  for (const name of ["regular_weight", "bold_weight"] as const) {
-    knobs[name].input.disabled = !variable;
-    knobs[name].input.closest(".knob")?.classList.toggle("disabled", !variable);
-  }
-  tuningNoteEl.textContent = variable
-    ? "Applies to every font you build."
-    : "Weights only apply to variable fonts. This family ships fixed Regular and Bold files.";
+  weightTicksEl.replaceChildren(
+    ...(candidate?.faces ?? []).map((face) => {
+      const option = document.createElement("option");
+      option.value = String(face.weight);
+      option.label = face.style || "Regular";
+      return option;
+    }),
+  );
+  faceEls.regular_weight.textContent = faceLabel(candidate?.plain_face);
+  faceEls.bold_weight.textContent = faceLabel(candidate?.bold_face);
+  tuningNoteEl.textContent = tuningNote(candidate);
 }
 
 let tuningTimer: ReturnType<typeof setTimeout> | null = null;
@@ -368,12 +388,33 @@ function onTuningInput(event: Event) {
 }
 
 async function saveTuning(values: Partial<Settings>) {
-  const result = await run("Saving settings…", () => settingsApi(values));
+  const result = await run("Saving settings…", async () => ({
+    saved: await settingsApi(values),
+    fonts: await installed(),
+  }));
   if (!result) return;
-  state.settings = result.settings;
-  state.defaults = result.defaults;
+  state.settings = result.saved.settings;
+  state.defaults = result.saved.defaults;
+  state.candidates = result.fonts.candidates;
+  renderList();
+  await reselectForSettings();
   renderTuning();
   await refreshPreview();
+}
+
+async function reselectForSettings() {
+  const selection = state.selected;
+  if (selection?.tab === "installed") {
+    const family = selection.candidate.family;
+    const updated = state.candidates.find((candidate) => candidate.family === family);
+    if (updated) state.selected = { tab: "installed", candidate: updated };
+    return;
+  }
+  if (!selection || state.previewed?.key !== selectionKey(selection)) return;
+  const family = state.previewed.candidate.family;
+  const refreshed = await caskFonts(selection.token).catch(() => null);
+  const updated = refreshed?.candidates.find((candidate) => candidate.family === family);
+  if (updated) state.previewed = { key: state.previewed.key, candidate: updated };
 }
 
 async function refreshPreview() {

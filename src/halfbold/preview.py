@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from halfbold.build import bold_prefix_length
 from halfbold.scan import Candidate, candidates_from_paths, read_font_info
-from halfbold.settings import BOLD_WEIGHT, REGULAR_WEIGHT
+from halfbold.settings import BOLD_WEIGHT, REGULAR_WEIGHT, load_settings
 
 SAMPLE_TEXT = (
     "The quick brown fox jumps over the lazy dog. Reading gets faster when "
@@ -156,7 +156,9 @@ def preview_images(
     candidates: list[Candidate], *, png: Path | None, wait: bool
 ) -> list[str]:
     if not candidates:
-        raise ValueError("no Regular + Bold pair or variable TrueType font to preview")
+        raise ValueError(
+            "no two weights of one family or variable TrueType font to preview"
+        )
     shown = candidates[:3]
     lines: list[str] = []
     for index, candidate in enumerate(shown, start=1):
@@ -187,10 +189,12 @@ def preview_images(
 
 
 def preview_candidates(target_dir: Path, *, png: Path | None, wait: bool) -> list[str]:
-    candidates = candidates_from_paths(sorted(target_dir.rglob("*.ttf")))
+    candidates = candidates_from_paths(
+        sorted(target_dir.rglob("*.ttf")), load_settings()
+    )
     if not candidates:
         raise ValueError(
-            f"no Regular + Bold pair or variable TrueType font in {target_dir}"
+            f"no two weights of one family or variable TrueType font in {target_dir}"
         )
     return preview_images(candidates, png=png, wait=wait)
 
