@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 
+import pytest
 from conftest import make_font
 from test_scan import fill_fonts_dir
 from test_web import CSS
@@ -538,3 +539,39 @@ def test_preview_cache_key_clamps_variable_weights(tmp_path: Path):
 
     assert tag(100) == tag(150)
     assert tag(100) != tag(500)
+
+
+def test_preview_from_faces_resolves_the_pair(tmp_path: Path, capsys, monkeypatch):
+    fonts = tmp_path / "fonts"
+    fonts.mkdir()
+    light = make_font(fonts / "Three-Light.ttf", "Three", "Light", 80)
+    regular = make_font(fonts / "Three-Regular.ttf", "Three", "Regular", 100)
+    bold = make_font(fonts / "Three-Bold.ttf", "Three", "Bold", 200)
+    monkeypatch.setattr(api, "CACHE_DIR", tmp_path / "cache")
+    monkeypatch.setattr(
+        "halfbold.settings.default_settings_path", lambda: tmp_path / "settings.json"
+    )
+    faces = ["--face", str(light), "--face", str(regular), "--face", str(bold)]
+
+    assert main(["preview", *faces, "--fonts-dir", str(fonts)]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["family"] == "Three"
+    assert payload["regular"] == str(regular)
+    assert payload["plain_face"]["style"] == "Regular"
+    assert payload["bold_face"]["style"] == "Bold"
+    assert [f["style"] for f in payload["faces"]] == ["Light", "Regular", "Bold"]
+    assert payload["output"] == str(fonts / "Three-Half.ttf")
+
+    assert main(["settings", json.dumps({"regular_weight": 300})]) == 0
+    capsys.readouterr()
+    assert main(["preview", *faces, "--fonts-dir", str(fonts)]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["regular"] == str(light)
+    assert payload["plain_face"]["style"] == "Light"
+
+
+def test_preview_needs_either_a_file_or_faces(tmp_path: Path):
+    with pytest.raises(SystemExit):
+        api.parse_args(["preview"])
+    with pytest.raises(SystemExit):
+        api.parse_args(["preview", str(tmp_path / "a.ttf"), "--face", "b.ttf"])

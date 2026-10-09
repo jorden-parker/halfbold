@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+from dataclasses import replace
 from pathlib import Path
 
 from fontTools.ttLib import TTLibError
@@ -162,14 +163,22 @@ def build(args: argparse.Namespace) -> dict:
     }
 
 
+def candidate_from_family(faces: list[Path], settings: Settings) -> Candidate:
+    found = candidates_from_paths(faces, settings)
+    if len(found) != 1:
+        raise ValueError(f"{len(found)} convertible families in {len(faces)} faces")
+    return found[0]
+
+
 def preview(args: argparse.Namespace) -> dict:
-    candidate = candidate_from_files(args.regular, args.bold)
     settings = load_settings()
-    return {
-        "family": candidate.family,
-        "kind": candidate.kind,
-        "regular": str(candidate.regular),
-        "bold": None if candidate.bold is None else str(candidate.bold),
+    if args.faces:
+        candidate = candidate_from_family(args.faces, settings)
+        if args.fonts_dir is not None:
+            candidate = replace(candidate, output_dir=args.fonts_dir)
+    else:
+        candidate = candidate_from_files(args.regular, args.bold)
+    return candidate_payload(candidate) | {
         "half": str(preview_half(candidate, settings)),
         "settings": settings.as_dict(),
     }
@@ -285,8 +294,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     build_parser.set_defaults(handler=build)
 
     preview_parser = subparsers.add_parser("preview")
-    preview_parser.add_argument("regular", type=Path)
+    preview_parser.add_argument("regular", type=Path, nargs="?")
     preview_parser.add_argument("bold", type=Path, nargs="?")
+    preview_parser.add_argument("--face", type=Path, action="append", dest="faces")
+    preview_parser.add_argument("--fonts-dir", type=Path)
     preview_parser.set_defaults(handler=preview)
 
     casks_parser = subparsers.add_parser("casks")
@@ -332,6 +343,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     if args.command == "web" and args.kind and not args.family:
         parser.error("web KIND requires FAMILY")
+    if args.command == "preview" and bool(args.regular) == bool(args.faces):
+        parser.error("preview takes either REGULAR or --face, not both")
     return args
 
 

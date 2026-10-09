@@ -25,10 +25,13 @@ your row when done.
 | 014  | Homebrew tab lists casks by real font name drawn in its own face (Google Fonts casks up front, others after preview); Installed rows styled too | P2 | M | 011, 012 | DONE (2026-09-16, executed in worktree `.claude/worktrees/agent-a671eb04fdcfe7ccd`, branch `advisor/014-cask-names`, 4 commits ending 804263e (reviewer replaced the deprecated `DOMNodeInserted` face loader with a visible-row queue), fast-forward merged to main at 804263e; manual GUI check in `pnpm tauri dev` still pending) |
 | 015  | Polish the app, preview every selection by default, list only convertible casks, one long-lived `halfbold-api serve`, Bun instead of pnpm + Vite, bold share / shortest word / weight settings shared by app, CLI and watcher | P2 | L | 012, 014 | DONE (2026-09-16, executed in worktree `.claude/worktrees/015`, branch `feat/015-polish-preview-bun`, 5 commits ending 23f16ca, maintainer GUI check of Installed and Homebrew tabs and the sliders, merged to main) |
 | 016  | Bold each camelCase subword on its own (`toHaveBeen` → `t`o `Ha`ve `Be`en; acronyms `HTTPServer` → `HT`TP `Ser`ver) so Half fonts read well in Ghostty / Neovim | P2 | M | — | DONE (2026-09-24, executed in worktree `.claude/worktrees/agent-ab43647cdb893f144`, branch `advisor/016-camel-case-subwords`, 10 commits ending 0dd6f4b, one revision round (two-lookup design after HarfBuzz rejected the GSUB on a Nerd Font), reviewed and approved incl. smoke check on JetBrainsMonoNL Nerd Font, merged to main) |
+| 017  | [Make “Set up Chrome” preserve each webpage's fonts and convert supported local/web faces to Half](017-preserve-page-fonts-in-chrome.md) | P1 | L (48–88 hours) | Existing browser setup at 783e51f | TODO (2026-10-06; start with font-delivery feasibility test) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
 ## Dependency notes
+
+- 017 extends the browser setup/native host already present at `783e51f`. Its five stages are sequential: prove delivery, catalog/conversion service, preserve local typography, downloaded webfonts, then setup UX and full verification. Existing Slot choices remain available in an explicit mode. It supersedes blanket font replacement only in the new preserve mode; it does not depend on retiring the TUI in 013.
 
 - 002 extends the Go TUI from 001 (`tui/model.go`, `tui/fonts.go`, new `tui/brew.go`); it needs 001 merged, which it is at `64d4948`.
 - Neither plan touches Python source under `src/`.

@@ -39,14 +39,7 @@ export interface Settings {
   bold_weight: number;
 }
 
-export interface Preview {
-  family: string;
-  kind: Kind;
-  regular: string;
-  bold: string | null;
-  half: string;
-  settings: Settings;
-}
+export type Preview = Candidate & { half: string; settings: Settings };
 
 export type WebFonts = Record<Kind, string>;
 
@@ -64,10 +57,13 @@ export function build(c: Candidate) {
   return api<{ output: string; letters: number }>(...args, "-o", c.output);
 }
 
-export function preview(c: Candidate) {
-  const args = ["preview", c.regular];
-  if (c.bold) args.push(c.bold);
-  return api<Preview>(...args);
+export function preview(c: Candidate, fontsDir?: string) {
+  const faces = c.faces.length
+    ? c.faces.map((face) => face.path)
+    : [c.regular, c.bold].filter((path): path is string => Boolean(path));
+  const args = faces.flatMap((path) => ["--face", path]);
+  if (fontsDir) args.push("--fonts-dir", fontsDir);
+  return api<Preview>("preview", ...args);
 }
 
 export function casks() {
