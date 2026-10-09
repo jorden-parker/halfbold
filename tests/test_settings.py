@@ -40,3 +40,14 @@ def test_cache_tag_changes_with_values():
 
 def test_cache_tag_carries_rules_version():
     assert Settings().cache_tag().startswith("v3-")
+
+
+def test_rules_tag_ignores_the_weights():
+    plain = Settings(regular_weight=300, bold_weight=800)
+    assert plain.rules_tag() == Settings().rules_tag()
+    assert plain.cache_tag() != Settings().cache_tag()
+
+
+def test_cache_tag_starts_with_the_rules_tag():
+    settings = Settings(bold_share=0.7)
+    assert settings.cache_tag().startswith(settings.rules_tag())

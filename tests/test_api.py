@@ -10,7 +10,8 @@ from test_web import CSS
 from halfbold import api
 from halfbold.api import main
 from halfbold.brewcask import CaskInfo
-from halfbold.scan import build_all
+from halfbold.scan import build_all, candidates_from_paths
+from halfbold.settings import Settings
 
 
 def test_installed_lists_candidates_with_flags(tmp_path: Path, capsys):
@@ -478,3 +479,62 @@ def test_installed_payload_reports_the_resolved_faces(
     assert candidate["bold_face"]["style"] == "Medium"
     assert candidate["faces_label"] == "plain Light 300, bold Medium 500"
     assert [f["weight"] for f in candidate["faces"]] == [300, 400, 500, 700]
+
+
+def test_preview_reuses_one_build_across_weight_stops(
+    font_pair, tmp_path: Path, capsys, monkeypatch
+):
+    regular, bold = font_pair
+    monkeypatch.setattr(api, "CACHE_DIR", tmp_path / "cache")
+    monkeypatch.setattr(
+        "halfbold.settings.default_settings_path", lambda: tmp_path / "settings.json"
+    )
+
+    assert main(["preview", str(regular), str(bold)]) == 0
+    first = json.loads(capsys.readouterr().out)["half"]
+    built = Path(first).stat().st_mtime
+
+    for weight in (350, 450, 500):
+        assert main(["settings", json.dumps({"regular_weight": weight})]) == 0
+        capsys.readouterr()
+        assert main(["preview", str(regular), str(bold)]) == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["half"] == first
+        assert Path(payload["half"]).stat().st_mtime == built
+
+
+def test_preview_cache_key_tracks_the_resolved_faces(tmp_path: Path):
+    fonts = tmp_path / "fonts"
+    fill_fonts_dir(fonts)
+    light = make_font(fonts / "Three-Light.ttf", "Three", "Light", 80)
+    make_font(fonts / "Three-Regular.ttf", "Three", "Regular", 100)
+    make_font(fonts / "Three-Bold.ttf", "Three", "Bold", 200)
+
+    def tag(regular_weight: float) -> str:
+        settings = Settings(regular_weight=regular_weight)
+        paths = sorted(fonts.glob("Three-*.ttf"))
+        candidate = next(
+            c for c in candidates_from_paths(paths, settings) if c.family == "Three"
+        )
+        return api.faces_tag(candidate)
+
+    assert tag(380) == tag(420)
+    assert tag(300) != tag(420)
+    assert light.stem.replace("-", "") in tag(300)
+
+
+def test_preview_cache_key_clamps_variable_weights(tmp_path: Path):
+    fonts = tmp_path / "fonts"
+    fill_fonts_dir(fonts)
+
+    def tag(regular_weight: float) -> str:
+        settings = Settings(regular_weight=regular_weight)
+        candidate = next(
+            c
+            for c in candidates_from_paths([fonts / "Var.ttf"], settings)
+            if c.family == "Var"
+        )
+        return api.faces_tag(candidate)
+
+    assert tag(100) == tag(150)
+    assert tag(100) != tag(500)

@@ -58,10 +58,15 @@ class Settings:
     def as_dict(self) -> dict:
         return asdict(self)
 
-    def cache_tag(self) -> str:
+    def rules_tag(self) -> str:
         return (
             f"v{RULES_VERSION}-s{round(self.bold_share * 100)}"
             f"-m{self.min_word_length}-x{self.max_word_length}"
+        )
+
+    def cache_tag(self) -> str:
+        return (
+            f"{self.rules_tag()}"
             f"-w{round(self.regular_weight)}-b{round(self.bold_weight)}"
         )
 

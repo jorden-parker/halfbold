@@ -1,5 +1,7 @@
 import argparse
 import json
+import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -43,6 +45,9 @@ def default_cache_dir() -> Path:
 
 CACHE_DIR = default_cache_dir()
 CASK_INDEX_CACHE = "cask-index.json"
+NON_TAG = re.compile(r"[^A-Za-z0-9]")
+CACHE_LOCKS: dict[Path, threading.Lock] = {}
+CACHE_LOCKS_GUARD = threading.Lock()
 
 
 def face_payload(face: Face | None) -> dict | None:
@@ -77,6 +82,49 @@ def candidate_from_files(regular: Path, bold: Path | None) -> Candidate:
     return Candidate(family, regular, bold, info.kind)
 
 
+def faces_tag(candidate: Candidate) -> str:
+    if candidate.bold is None:
+        plain = candidate.plain_weight or 0
+        bold = candidate.bold_weight or 0
+        return f"w{round(plain)}-b{round(bold)}"
+    plain_face = candidate.plain_face
+    bold_face = candidate.bold_face
+    if plain_face is None or bold_face is None:
+        return f"{tag_part(candidate.regular.stem)}-{tag_part(candidate.bold.stem)}"
+    return (
+        f"{tag_part(plain_face.path.stem)}{round(plain_face.weight)}"
+        f"-{tag_part(bold_face.path.stem)}{round(bold_face.weight)}"
+    )
+
+
+def tag_part(text: str) -> str:
+    return NON_TAG.sub("", text) or "x"
+
+
+def is_fresh(target: Path, sources: list[Path]) -> bool:
+    if not target.exists():
+        return False
+    built = target.stat().st_mtime
+    return all(path.stat().st_mtime <= built for path in sources)
+
+
+def cache_lock(path: Path) -> threading.Lock:
+    with CACHE_LOCKS_GUARD:
+        return CACHE_LOCKS.setdefault(path, threading.Lock())
+
+
+def build_into_cache(candidate: Candidate, half: Path, settings: Settings) -> None:
+    with cache_lock(half):
+        if is_fresh(half, candidate.sources):
+            return
+        part = half.with_name(f"{half.name}.{os.getpid()}.{threading.get_ident()}.part")
+        try:
+            build_halfbold_font(candidate.regular, candidate.bold, part, settings)
+            os.replace(part, half)
+        finally:
+            part.unlink(missing_ok=True)
+
+
 def preview_half(
     candidate: Candidate,
     settings: Settings | None = None,
@@ -86,12 +134,10 @@ def preview_half(
     cache_dir = cache_dir or CACHE_DIR
     cache_dir.mkdir(parents=True, exist_ok=True)
     stem = candidate.output.stem
-    half = cache_dir / f"{stem}.{settings.cache_tag()}{candidate.output.suffix}"
-    if half.exists():
-        built = half.stat().st_mtime
-        if all(p.stat().st_mtime <= built for p in candidate.sources):
-            return half
-    build_halfbold_font(candidate.regular, candidate.bold, half, settings)
+    tag = f"{settings.rules_tag()}-{faces_tag(candidate)}"
+    half = cache_dir / f"{stem}.{tag}{candidate.output.suffix}"
+    if not is_fresh(half, candidate.sources):
+        build_into_cache(candidate, half, settings)
     return half
 
 
@@ -317,7 +363,7 @@ def serve(stdin=None, stdout=None) -> int:
         except (*API_ERRORS, SystemExit) as err:
             respond({"id": request_id, "ok": False, "error": str(err)})
 
-    threads = []
+    threads: list[threading.Thread] = []
     for line in stdin:
         line = line.strip()
         if not line:
@@ -325,6 +371,7 @@ def serve(stdin=None, stdout=None) -> int:
         request = json.loads(line)
         thread = threading.Thread(target=work, args=(request,), daemon=True)
         thread.start()
+        threads = [t for t in threads if t.is_alive()]
         threads.append(thread)
     for thread in threads:
         thread.join()

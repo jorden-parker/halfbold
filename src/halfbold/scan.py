@@ -120,7 +120,23 @@ def face_weight(font: TTFont, style: str) -> int:
     return FALLBACK_WEIGHT
 
 
+FONT_INFO_CACHE: dict[tuple[Path, int, int], FontInfo | None] = {}
+
+
 def read_font_info(path: Path) -> FontInfo | None:
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    key = (path, stat.st_mtime_ns, stat.st_size)
+    if key in FONT_INFO_CACHE:
+        return FONT_INFO_CACHE[key]
+    info = load_font_info(path)
+    FONT_INFO_CACHE[key] = info
+    return info
+
+
+def load_font_info(path: Path) -> FontInfo | None:
     try:
         font = TTFont(path, lazy=True)
     except TTLibError, OSError:
