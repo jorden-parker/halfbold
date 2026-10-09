@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
+from fontTools.pens.boundsPen import BoundsPen
 from fontTools.ttLib import TTFont
 
 from halfbold.build import (
@@ -158,3 +159,41 @@ def test_half_font_is_regular_whichever_face_built_it(multi_weight_family: Path)
     assert half["OS/2"].fsSelection & 0x40
     assert not half["OS/2"].fsSelection & 0x21
     assert not half["head"].macStyle & 0x03
+
+
+def test_untouched_glyphs_keep_their_source_bounds(font_pair, tmp_path: Path):
+    regular, bold = font_pair
+    source = TTFont(regular)
+    widened = source["glyf"]["a"].xMax + 7
+    source["glyf"]["a"].xMax = widened
+    source.recalcBBoxes = False
+    nudged = tmp_path / "Nudged.ttf"
+    source.save(nudged)
+    assert TTFont(nudged)["glyf"]["a"].xMax == widened
+    out = tmp_path / "Out-Half.ttf"
+
+    build_halfbold_font(nudged, bold, out)
+
+    assert TTFont(out)["glyf"]["a"].xMax == widened
+
+
+def test_copied_glyphs_get_bounds_that_hold_their_outline(font_pair, tmp_path: Path):
+    regular, bold = font_pair
+    out = tmp_path / "Out-Half.ttf"
+
+    build_halfbold_font(regular, bold, out)
+
+    font = TTFont(out)
+    glyf = font["glyf"]
+    glyph_set = font.getGlyphSet()
+    copied = [n for n in font.getGlyphOrder() if n.endswith(BOLD_SUFFIX)]
+    assert copied
+    for name in copied:
+        pen = BoundsPen(glyph_set)
+        glyph_set[name].draw(pen)
+        assert pen.bounds is not None
+        glyph = glyf[name]
+        assert glyph.xMin <= pen.bounds[0]
+        assert glyph.yMin <= pen.bounds[1]
+        assert glyph.xMax >= pen.bounds[2]
+        assert glyph.yMax >= pen.bounds[3]

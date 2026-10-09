@@ -63,6 +63,7 @@ def build_halfbold_font(
     rename_font(regular)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    regular.recalcBBoxes = False
     regular.save(output_path)
     return letters.names
 
@@ -142,7 +143,9 @@ def copy_bold_glyphs(regular: TTFont, bold: TTFont, letters: list[str]) -> None:
         bold_glyph_set[name].draw(pen)
         tt_pen = TTGlyphPen(None)
         pen.replay(tt_pen)
-        glyf[new_name] = tt_pen.glyph()
+        glyph = tt_pen.glyph()
+        glyph.recalcBounds(glyf)
+        glyf[new_name] = glyph
         hmtx[new_name] = bold_hmtx[name]
 
 
