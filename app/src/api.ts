@@ -86,6 +86,10 @@ export function webFonts(kind?: Kind, family?: string) {
   return kind && family ? api<WebFonts>("web", kind, family) : api<WebFonts>("web");
 }
 
+export function setVscodeFont(family: string) {
+  return api<{ settings: string; font_family: string }>("vscode", family);
+}
+
 export function settings(values?: Partial<Settings>) {
   const args = values ? ["settings", JSON.stringify(values)] : ["settings"];
   return api<{ settings: Settings; defaults: Settings }>(...args);

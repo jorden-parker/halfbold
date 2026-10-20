@@ -9,6 +9,7 @@ import {
   KINDS,
   preview,
   settings as settingsApi,
+  setVscodeFont,
   webFonts,
   type Candidate,
   type CaskEntry,
@@ -538,6 +539,7 @@ function makeButton(label: string, onClick: () => void, className = ""): HTMLBut
 function renderInstalledActions(c: Candidate) {
   actionsEl.textContent = "";
   actionsEl.append(makeButton("Use in browser", () => onUseAs(c.kind === "mono" ? "mono" : "sans", c), "primary"));
+  actionsEl.append(makeButton("Use in Visual Studio Code", () => onUseInVscode(c)));
   actionsEl.append(makeButton(c.built ? "Rebuild Half" : "Build Half", () => onBuild(c)));
   const advanced = document.createElement("details");
   const summary = document.createElement("summary");
@@ -601,6 +603,17 @@ async function onUseAs(kind: Kind, c: Candidate) {
   showBrowserStatus(result.connection);
   if (!result.connection.configured) await setupChrome();
   scheduleBrowserCheck(0);
+}
+
+async function onUseInVscode(c: Candidate) {
+  if (busy()) return;
+  const result = await run(`Applying ${c.family} to Visual Studio Code…`, async () => {
+    await build(c);
+    return setVscodeFont(c.family);
+  });
+  if (!result) return;
+  await reloadInstalled();
+  showNote(`${c.family} Half is now the Visual Studio Code editor font. Reload any open VS Code window to see it.`);
 }
 
 const browserStatusEl = $("#browser-status");
