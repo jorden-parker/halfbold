@@ -8,7 +8,12 @@ from typing import Literal
 from fontTools.ttLib import TTFont, TTLibError
 
 from halfbold.build import STYLE_SUFFIX, build_halfbold_font
-from halfbold.collection import open_font, source_file
+from halfbold.collection import (
+    COLLECTION_SUFFIX,
+    collection_members,
+    open_font,
+    source_file,
+)
 from halfbold.settings import Settings
 
 STYLE_WEIGHTS = {
@@ -173,6 +178,10 @@ def is_italic(info: FontInfo) -> bool:
     return "italic" in info.style.lower() or "oblique" in info.style.lower()
 
 
+def is_hidden(info: FontInfo) -> bool:
+    return info.family.startswith(".")
+
+
 def find_installed_half_families(fonts_dir: Path) -> set[str]:
     return {
         info.family
@@ -197,6 +206,15 @@ def installed_font_dirs() -> list[Path]:
     ]
 
 
+FONT_SUFFIXES = {".ttf", ".otf", COLLECTION_SUFFIX}
+
+
+def face_paths(path: Path) -> list[Path]:
+    if path.suffix.lower() == COLLECTION_SUFFIX:
+        return collection_members(path)
+    return [path]
+
+
 def find_installed_candidates(
     fonts_dir: Path, settings: Settings | None = None
 ) -> list[Candidate]:
@@ -204,12 +222,13 @@ def find_installed_candidates(
     if fonts_dir == Path.home() / "Library/Fonts":
         roots.extend(installed_font_dirs())
     paths = dict.fromkeys(
-        path
+        face
         for root in reversed(roots)
         for path in sorted(root.rglob("*"))
-        if path.suffix.lower() in {".ttf", ".otf"}
+        if path.suffix.lower() in FONT_SUFFIXES
         and not path.name.startswith("._")
         and path.is_file()
+        for face in face_paths(path)
     )
     return sorted(
         (
@@ -268,6 +287,7 @@ def candidates_from_paths(
         if (info := read_font_info(path)) is not None
         and not is_half_output(info)
         and not is_italic(info)
+        and not is_hidden(info)
     ]
     candidates: list[Candidate] = []
     families_done: set[str] = set()

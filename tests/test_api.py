@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 import pytest
-from conftest import make_font
+from conftest import make_collection, make_font
 from test_scan import fill_fonts_dir
 from test_web import CSS
 
@@ -427,6 +427,50 @@ def test_installed_discovers_system_fonts_and_builds_into_user_folder(
     assert rebuilt["built"] is True
     assert rebuilt["stale"] is False
     assert not (supplemental / "Arial-Half.ttf").exists()
+
+
+def make_menlo_collection(tmp_path, family="Menlo"):
+    parts = tmp_path / "parts"
+    parts.mkdir(exist_ok=True)
+    system = tmp_path / "system"
+    system.mkdir(exist_ok=True)
+    regular = make_font(parts / "Menlo-Regular.ttf", family, "Regular", 100, weight=400)
+    bold = make_font(parts / "Menlo-Bold.ttf", family, "Bold", 200, weight=700)
+    return make_collection(system / "Menlo.ttc", [regular, bold])
+
+
+def test_installed_lists_faces_inside_a_collection(tmp_path, monkeypatch, capsys):
+    from halfbold import scan
+
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    fonts = tmp_path / "Library/Fonts"
+    fonts.mkdir(parents=True)
+    ttc = make_menlo_collection(tmp_path)
+    monkeypatch.setattr(scan, "installed_font_dirs", lambda: [tmp_path / "system"])
+
+    assert main(["installed", "--fonts-dir", str(fonts)]) == 0
+    candidate = json.loads(capsys.readouterr().out)["candidates"][0]
+    assert candidate["family"] == "Menlo"
+    assert candidate["regular"] == f"{ttc}#0"
+    assert candidate["bold"] == f"{ttc}#1"
+    assert candidate["output"] == str(fonts / "Menlo-Half.ttf")
+    assert candidate["built"] is False
+    assert candidate["stale"] is True
+
+
+def test_installed_hides_collections_of_private_dot_families(
+    tmp_path, monkeypatch, capsys
+):
+    from halfbold import scan
+
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    fonts = tmp_path / "Library/Fonts"
+    fonts.mkdir(parents=True)
+    make_menlo_collection(tmp_path, family=".Hidden")
+    monkeypatch.setattr(scan, "installed_font_dirs", lambda: [tmp_path / "system"])
+
+    assert main(["installed", "--fonts-dir", str(fonts)]) == 0
+    assert json.loads(capsys.readouterr().out)["candidates"] == []
 
 
 def test_installed_prefers_user_pair_over_duplicate_system_pair(tmp_path, monkeypatch):
