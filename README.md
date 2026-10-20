@@ -121,6 +121,12 @@ confirms when Chrome receives your settings; later font switches update open
 pages without refreshing. **Choose slot** exposes the individual slots.
 See [browser setup](chrome-extension/README.md) for upgrades and troubleshooting.
 
+For Visual Studio Code, select a font and click **Use in Visual Studio Code**.
+It builds and installs the Half font, sets it as `editor.fontFamily` in your
+user `settings.json`, and turns on `editor.fontLigatures` so `calt` runs.
+Comments and other settings in the file are kept. Reload open VS Code windows
+to pick up a newly installed font.
+
 
 A small Tauri window that lists every convertible font, previews the real
 half-bold result next to the plain font, builds the Half twin, installs
@@ -178,7 +184,7 @@ go -C tui vet ./... && go -C tui test ./...
 
 `uv run halfbold-api <subcommand>` is the JSON interface the desktop app
 (`app/`) drives: `installed`, `build`, `preview`, `casks`, `cask-fonts`,
-`cask-face`, `cask-install`, `settings`, `web`. Each prints one JSON object; failures print
+`cask-face`, `cask-install`, `settings`, `web`, `vscode`. Each prints one JSON object; failures print
 `{"error": …}` and exit 1. `serve` reads `{"id", "args"}` lines on stdin and
 answers each with `{"id", "ok", "result" | "error"}`, running requests
 concurrently.
