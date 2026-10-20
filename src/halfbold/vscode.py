@@ -76,6 +76,30 @@ def set_setting(text: str, key: str, value: object) -> str:
     return text[: opening.end] + insertion + text[opening.end :]
 
 
+def remove_setting(text: str, key: str) -> str:
+    _, values = top_level_values(text)
+    if key not in values:
+        return text
+    items = tokens(text)
+    value_index = next(
+        i for i, item in enumerate(items) if item.start == values[key][0]
+    )
+    key_index = value_index - 2
+    last = value_end(items, value_index)
+    start = len(text[: items[key_index].start].rstrip())
+    following = items[last + 1]
+    if following.text == ",":
+        return text[:start] + text[following.end :]
+    preceding = items[key_index - 1]
+    if preceding.text == ",":
+        return (
+            text[: preceding.start]
+            + text[preceding.end : start]
+            + text[items[last].end :]
+        )
+    return text[:start] + text[items[last].end :]
+
+
 def get_setting(text: str, key: str) -> object:
     _, values = top_level_values(text)
     if key not in values:

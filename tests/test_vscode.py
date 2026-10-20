@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from halfbold.vscode import get_setting, set_setting, use_in_vscode
+from halfbold.vscode import get_setting, remove_setting, set_setting, use_in_vscode
 
 WITH_COMMENTS = """{
     // Editor look
@@ -43,6 +43,34 @@ def test_set_setting_fills_an_empty_object():
 def test_set_setting_rejects_a_non_object():
     with pytest.raises(ValueError, match="not a JSON object"):
         set_setting("[]", "editor.fontFamily", "x")
+
+
+def test_remove_setting_drops_a_middle_key_and_keeps_comments():
+    text = remove_setting(WITH_COMMENTS, "editor.fontSize")
+
+    assert "// Editor look" in text
+    assert get_setting(text, "editor.fontSize") is None
+    assert get_setting(text, "editor.fontFamily") == "Menlo, monospace"
+
+
+def test_remove_setting_drops_the_last_key_and_its_comma():
+    text = '{\n    "a": 1,\n    "b": 2\n}\n'
+
+    assert remove_setting(text, "b") == '{\n    "a": 1\n}\n'
+
+
+def test_remove_setting_drops_the_first_key():
+    text = '{\n    "a": 1,\n    "b": 2\n}\n'
+
+    assert remove_setting(text, "a") == '{\n    "b": 2\n}\n'
+
+
+def test_remove_setting_empties_a_single_key_object():
+    assert json.loads(remove_setting('{"a": [1, {"b": 2}]}', "a")) == {}
+
+
+def test_remove_setting_ignores_a_missing_key():
+    assert remove_setting(WITH_COMMENTS, "editor.tabSize") == WITH_COMMENTS
 
 
 def test_use_in_vscode_sets_family_and_turns_on_ligatures(tmp_path: Path):
