@@ -88,9 +88,23 @@
           </div>
         </div>
       </section>
+      <section id="reset-panel" aria-label="Reset" hidden>
+        <p>Put Visual Studio Code and the Chrome slots back the way they were before halfbold changed them?</p>
+        <label class="reset-option">
+          <input id="reset-delete-fonts" type="checkbox" />
+          Also delete every Half font in ~/Library/Fonts and remove the file watcher
+        </label>
+        <div class="reset-buttons">
+          <button id="reset-cancel" type="button">Cancel</button>
+          <button id="reset-confirm" class="danger" type="button">Reset</button>
+        </div>
+      </section>
       <footer id="statusbar">
         <span id="status"></span>
-        <span id="slots"></span>
+        <span class="statusbar-end">
+          <span id="slots"></span>
+          <button id="reset-open" class="link" type="button">Reset…</button>
+        </span>
       </footer>
     </main>
   </body>

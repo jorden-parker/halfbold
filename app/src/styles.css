@@ -10,6 +10,7 @@
   --selected: rgba(0, 0, 0, 0.085);
   --accent: #3454c9;
   --accent-fg: #ffffff;
+  --danger: #c0392b;
   --control: #ffffff;
   --control-border: rgba(0, 0, 0, 0.14);
   --ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
@@ -27,6 +28,7 @@
     --selected: rgba(255, 255, 255, 0.1);
     --accent: #6f8bf2;
     --accent-fg: #0f1120;
+    --danger: #e0645a;
     --control: #2f2f34;
     --control-border: rgba(255, 255, 255, 0.12);
   }
@@ -418,7 +420,52 @@ button.link:hover {
 }
 
 #status.error {
-  color: #c0392b;
+  color: var(--danger);
+}
+
+.statusbar-end {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+#statusbar button.link {
+  font-size: 11px;
+}
+
+#reset-panel {
+  padding: 12px 24px;
+  border-top: 1px solid var(--hairline);
+  font-size: 12px;
+}
+
+#reset-panel p { margin: 0 0 8px; }
+
+.reset-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.reset-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.reset-buttons button {
+  padding: 4px 11px;
+  border: 1px solid var(--control-border);
+  border-radius: 6px;
+  background: var(--control);
+}
+
+.reset-buttons button.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #ffffff;
 }
 
 #slots span {

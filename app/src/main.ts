@@ -8,6 +8,7 @@ import {
   installed,
   KINDS,
   preview,
+  reset as resetApi,
   settings as settingsApi,
   setVscodeFont,
   webFonts,
@@ -19,6 +20,7 @@ import {
   type WebFonts,
 } from "./api";
 import { faceAlias, loadFace, retireFace } from "./fonts";
+import { resetSummary } from "./reset";
 import { createSequencer } from "./sequence";
 
 const DEFAULT_SAMPLE_TEXT =
@@ -87,6 +89,11 @@ const resetSampleEl = $<HTMLButtonElement>("#reset-sample");
 const tuningEl = $<HTMLFormElement>("#tuning");
 const tuningNoteEl = $<HTMLSpanElement>("#tuning-note");
 const resetTuningEl = $<HTMLButtonElement>("#reset-tuning");
+const resetOpenEl = $<HTMLButtonElement>("#reset-open");
+const resetPanelEl = $<HTMLElement>("#reset-panel");
+const resetDeleteFontsEl = $<HTMLInputElement>("#reset-delete-fonts");
+const resetCancelEl = $<HTMLButtonElement>("#reset-cancel");
+const resetConfirmEl = $<HTMLButtonElement>("#reset-confirm");
 const weightTicksEl = $<HTMLDataListElement>("#weight-ticks");
 const faceEls: Record<"regular_weight" | "bold_weight", HTMLSpanElement> = {
   regular_weight: $("#face-regular"),
@@ -579,6 +586,14 @@ async function onBuild(c: Candidate) {
   }
 }
 
+function refreshSelectedActions() {
+  if (state.selected?.tab !== "installed") return;
+  const family = state.selected.candidate.family;
+  const updated = state.candidates.find((candidate) => candidate.family === family);
+  if (updated) state.selected = { tab: "installed", candidate: updated };
+  renderInstalledActions(state.selected.candidate);
+}
+
 async function onUseAs(kind: Kind, c: Candidate) {
   if (busy()) return;
   const result = await run(`Applying ${c.family} to browser…`, async () => {
@@ -593,12 +608,7 @@ async function onUseAs(kind: Kind, c: Candidate) {
   state.candidates = result.fonts.candidates;
   renderSlots();
   renderList();
-  if (state.selected?.tab === "installed") {
-    const family = state.selected.candidate.family;
-    const updated = state.candidates.find((candidate) => candidate.family === family);
-    if (updated) state.selected = { tab: "installed", candidate: updated };
-    if (state.selected?.tab === "installed") renderInstalledActions(state.selected.candidate);
-  }
+  refreshSelectedActions();
   showNote(`${c.family} Half saved for browser ${kind === "mono" ? "code" : "text"}.`);
   showBrowserStatus(result.connection);
   if (!result.connection.configured) await setupChrome();
@@ -614,6 +624,32 @@ async function onUseInVscode(c: Candidate) {
   if (!result) return;
   await reloadInstalled();
   showNote(`${c.family} Half is now the Visual Studio Code editor font. Reload any open VS Code window to see it.`);
+}
+
+function closeResetPanel() {
+  resetPanelEl.hidden = true;
+  resetDeleteFontsEl.checked = false;
+}
+
+async function onReset() {
+  if (busy()) return;
+  const result = await run("Resetting…", () => resetApi(resetDeleteFontsEl.checked));
+  if (!result) return;
+  closeResetPanel();
+  state.web = result.web;
+  renderSlots();
+  await reloadInstalled();
+  refreshSelectedActions();
+  showNote(resetSummary(result));
+  scheduleBrowserCheck(0);
+}
+
+function setupReset() {
+  resetOpenEl.addEventListener("click", () => {
+    resetPanelEl.hidden = false;
+  });
+  resetCancelEl.addEventListener("click", closeResetPanel);
+  resetConfirmEl.addEventListener("click", () => void onReset());
 }
 
 const browserStatusEl = $("#browser-status");
@@ -833,6 +869,7 @@ function init() {
   setupFaceLoader();
   setupSampleEditing();
   setupTuning();
+  setupReset();
   tabInstalledEl.addEventListener("click", () => selectTab("installed"));
   tabBrewEl.addEventListener("click", () => selectTab("brew"));
   filterEl.addEventListener("input", renderList);
