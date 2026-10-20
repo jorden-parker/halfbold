@@ -1,13 +1,15 @@
 import os
 from pathlib import Path
 
-from conftest import make_font, make_variable_font
+from conftest import make_collection, make_font, make_variable_font
 from fontTools.ttLib import TTFont
 
 from halfbold.cli import main
+from halfbold.collection import collection_members
 from halfbold.scan import (
     Face,
     build_all,
+    candidates_from_paths,
     find_candidates,
     find_installed_half_families,
     font_kind,
@@ -248,3 +250,34 @@ def test_variable_candidate_reports_its_clamped_weights(tmp_path: Path):
 
     assert found["Var"].faces == ()
     assert found["Var"].faces_label == "plain wght 400, bold wght 700"
+
+
+def make_coll_collection(tmp_path: Path) -> Path:
+    parts = tmp_path / "parts"
+    parts.mkdir()
+    faces = [
+        make_font(parts / "Coll-Regular.ttf", "Coll", "Regular", 100, weight=400),
+        make_font(parts / "Coll-Bold.ttf", "Coll", "Bold", 200, weight=700),
+        make_font(parts / "Coll-Italic.ttf", "Coll", "Italic", 100, weight=400),
+    ]
+    return make_collection(tmp_path / "Coll.ttc", faces)
+
+
+def test_collection_faces_group_into_one_candidate(tmp_path: Path):
+    ttc = make_coll_collection(tmp_path)
+
+    [candidate] = candidates_from_paths(collection_members(ttc))
+
+    assert candidate.family == "Coll"
+    assert candidate.regular == Path(f"{ttc}#0")
+    assert candidate.bold == Path(f"{ttc}#1")
+    assert candidate.sources == [ttc, ttc]
+
+
+def test_read_font_info_reads_a_collection_face(tmp_path: Path):
+    ttc = make_coll_collection(tmp_path)
+
+    info = read_font_info(Path(f"{ttc}#1"))
+
+    assert info is not None
+    assert info.style == "Bold"

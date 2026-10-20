@@ -8,6 +8,7 @@ from typing import Literal
 from fontTools.ttLib import TTFont, TTLibError
 
 from halfbold.build import STYLE_SUFFIX, build_halfbold_font
+from halfbold.collection import open_font, source_file
 from halfbold.settings import Settings
 
 STYLE_WEIGHTS = {
@@ -68,7 +69,7 @@ class Candidate:
 
     @property
     def sources(self) -> list[Path]:
-        return [p for p in (self.regular, self.bold) if p is not None]
+        return [source_file(p) for p in (self.regular, self.bold) if p is not None]
 
     @property
     def faces_label(self) -> str | None:
@@ -125,7 +126,7 @@ FONT_INFO_CACHE: dict[tuple[Path, int, int], FontInfo | None] = {}
 
 def read_font_info(path: Path) -> FontInfo | None:
     try:
-        stat = path.stat()
+        stat = source_file(path).stat()
     except OSError:
         return None
     key = (path, stat.st_mtime_ns, stat.st_size)
@@ -138,7 +139,7 @@ def read_font_info(path: Path) -> FontInfo | None:
 
 def load_font_info(path: Path) -> FontInfo | None:
     try:
-        font = TTFont(path, lazy=True)
+        font = open_font(path, lazy=True)
     except TTLibError, OSError:
         return None
     try:
