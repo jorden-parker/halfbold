@@ -35,6 +35,10 @@ A Cask whose files live in the google/fonts repository, so single faces can be f
 One of the Chrome extension's three roles, sans, serif or mono, each pointing at one installed Half font family.
 _Avoid_: kind (that is the classification of a Candidate), active font
 
+**Originals**:
+The Visual Studio Code font settings and Slot values recorded the first time the app changes them, so Reset can put them back.
+_Avoid_: backup, snapshot
+
 **Kind**:
 The classification of a Candidate as sans, serif or mono.
 _Avoid_: category, class

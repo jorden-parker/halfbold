@@ -14,7 +14,7 @@ Personal Python CLI. Takes two weights of the same TrueType family and writes on
 
 ## Automation
 
-- `scripts/install-watcher.sh` installs a launchd user agent (`com.jorden.halfbold`) with `WatchPaths` on `~/Library/Fonts`. Every change there runs `halfbold sync`. Its own output lands in the same folder, which re-triggers one more run that reports everything up to date; that is expected.
+- `scripts/install-watcher.sh` installs a launchd user agent (`com.jorden.halfbold`) with `WatchPaths` on `~/Library/Fonts`. Every change there runs `halfbold sync`. Its own output lands in the same folder, which re-triggers one more run that reports everything up to date; that is expected. The app's Reset with **Also delete every Half font** boots the watcher out and deletes its plist before deleting the fonts.
 - `chrome-extension/install.sh` registers the native messaging host, copies the extension to Application Support, and opens `chrome://extensions` via AppleScript (macOS `open` silently drops `chrome://` URLs) for the one manual Load unpacked step.
 
 ## Conventions

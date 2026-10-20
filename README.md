@@ -127,6 +127,12 @@ user `settings.json`, and turns on `editor.fontLigatures` so `calt` runs.
 Comments and other settings in the file are kept. Reload open VS Code windows
 to pick up a newly installed font.
 
+**Reset…** in the status bar puts Visual Studio Code's font settings and
+the Chrome slots back to how they were before the app first changed them.
+Tick **Also delete every Half font** to also stop and remove the file
+watcher and delete every Half font in `~/Library/Fonts`. Re-run
+`scripts/install-watcher.sh` to get the watcher back.
+
 
 A small Tauri window that lists every convertible font, previews the real
 half-bold result next to the plain font, builds the Half twin, installs
@@ -184,7 +190,7 @@ go -C tui vet ./... && go -C tui test ./...
 
 `uv run halfbold-api <subcommand>` is the JSON interface the desktop app
 (`app/`) drives: `installed`, `build`, `preview`, `casks`, `cask-fonts`,
-`cask-face`, `cask-install`, `settings`, `web`, `vscode`. Each prints one JSON object; failures print
+`cask-face`, `cask-install`, `settings`, `web`, `vscode`, `reset`. Each prints one JSON object; failures print
 `{"error": …}` and exit 1. `serve` reads `{"id", "args"}` lines on stdin and
 answers each with `{"id", "ok", "result" | "error"}`, running requests
 concurrently.
