@@ -182,12 +182,16 @@ def is_hidden(info: FontInfo) -> bool:
     return info.family.startswith(".")
 
 
-def find_installed_half_families(fonts_dir: Path) -> set[str]:
+def find_installed_half_fonts(fonts_dir: Path) -> dict[Path, str]:
     return {
-        info.family
+        path: info.family
         for path in sorted(fonts_dir.glob("*.ttf"))
         if (info := read_font_info(path)) is not None and is_half_output(info)
     }
+
+
+def find_installed_half_families(fonts_dir: Path) -> set[str]:
+    return set(find_installed_half_fonts(fonts_dir).values())
 
 
 def find_candidates(
