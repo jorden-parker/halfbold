@@ -39,7 +39,7 @@ export interface Settings {
   bold_weight: number;
 }
 
-export type Preview = Candidate & { half: string; settings: Settings };
+type Preview = Candidate & { half: string; settings: Settings };
 
 export type WebFonts = Record<Kind, string>;
 
@@ -91,11 +91,18 @@ export function settings(values?: Partial<Settings>) {
   return api<{ settings: Settings; defaults: Settings }>(...args);
 }
 
-export function readFont(path: string) {
-  return invoke<ArrayBuffer>("read_font", { path });
+const COLLECTION_FACE = /\.ttc#\d+$/i;
+
+async function drawableFile(path: string) {
+  if (!COLLECTION_FACE.test(path)) return path;
+  return (await api<{ path: string }>("face-file", path)).path;
 }
 
-export interface BrowserStatus {
+export async function readFont(path: string) {
+  return invoke<ArrayBuffer>("read_font", { path: await drawableFile(path) });
+}
+
+interface BrowserStatus {
   configured: boolean;
   connected: boolean;
   synced: boolean;
