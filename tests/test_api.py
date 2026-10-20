@@ -469,6 +469,36 @@ def test_preview_accepts_collection_faces_and_caches_half(
     assert Path(payload["half"]).stat().st_mtime == first_mtime
 
 
+def test_face_file_extracts_a_collection_face_once(tmp_path, capsys, monkeypatch):
+    ttc = make_menlo_collection(tmp_path)
+    cache_dir = tmp_path / "cache"
+    monkeypatch.setattr(api, "CACHE_DIR", cache_dir)
+
+    assert main(["face-file", f"{ttc}#1"]) == 0
+    extracted = Path(json.loads(capsys.readouterr().out)["path"])
+    assert extracted.suffix == ".ttf"
+    assert cache_dir / "collections" in extracted.parents
+    assert TTFont(extracted)["name"].getDebugName(2) == "Bold"
+    first_mtime = extracted.stat().st_mtime
+
+    assert main(["face-file", f"{ttc}#1"]) == 0
+    again = Path(json.loads(capsys.readouterr().out)["path"])
+    assert again == extracted
+    assert again.stat().st_mtime == first_mtime
+
+
+def test_face_file_returns_plain_font_paths_unchanged(
+    font_pair, tmp_path, capsys, monkeypatch
+):
+    regular, _ = font_pair
+    cache_dir = tmp_path / "cache"
+    monkeypatch.setattr(api, "CACHE_DIR", cache_dir)
+
+    assert main(["face-file", str(regular)]) == 0
+    assert json.loads(capsys.readouterr().out)["path"] == str(regular)
+    assert not cache_dir.exists()
+
+
 def test_installed_lists_faces_inside_a_collection(tmp_path, monkeypatch, capsys):
     from halfbold import scan
 

@@ -25,6 +25,7 @@ from halfbold.brewcask import (
 from halfbold.browser import browser_status, setup_browser
 from halfbold.build import STYLE_SUFFIX, build_halfbold_font
 from halfbold.cli import DEFAULT_CSS, DEFAULT_FONTS_DIR
+from halfbold.collection import open_font, split_member
 from halfbold.scan import (
     KINDS,
     Candidate,
@@ -124,6 +125,37 @@ def build_into_cache(candidate: Candidate, half: Path, settings: Settings) -> No
             os.replace(part, half)
         finally:
             part.unlink(missing_ok=True)
+
+
+def standalone_face(path: Path) -> Path:
+    file, number = split_member(path)
+    if number is None:
+        return path
+    folder = CACHE_DIR / "collections" / file.parent.relative_to(file.anchor)
+    target = folder / f"{file.stem}-{number}.ttf"
+    if not is_fresh(target, [file]):
+        extract_into_cache(path, target)
+    return target
+
+
+def extract_into_cache(path: Path, target: Path) -> None:
+    with cache_lock(target):
+        if is_fresh(target, [split_member(path)[0]]):
+            return
+        target.parent.mkdir(parents=True, exist_ok=True)
+        part = target.with_name(
+            f"{target.name}.{os.getpid()}.{threading.get_ident()}.part"
+        )
+        try:
+            with open_font(path) as font:
+                font.save(part)
+            os.replace(part, target)
+        finally:
+            part.unlink(missing_ok=True)
+
+
+def face_file(args: argparse.Namespace) -> dict:
+    return {"path": str(standalone_face(args.path))}
 
 
 def preview_half(
@@ -310,6 +342,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     cask_face_parser = subparsers.add_parser("cask-face")
     cask_face_parser.add_argument("token")
     cask_face_parser.set_defaults(handler=cask_face)
+
+    face_file_parser = subparsers.add_parser("face-file")
+    face_file_parser.add_argument("path", type=Path)
+    face_file_parser.set_defaults(handler=face_file)
 
     cask_install_parser = subparsers.add_parser("cask-install")
     cask_install_parser.add_argument("token")
