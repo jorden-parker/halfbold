@@ -26,10 +26,13 @@ your row when done.
 | 015  | Polish the app, preview every selection by default, list only convertible casks, one long-lived `halfbold-api serve`, Bun instead of pnpm + Vite, bold share / shortest word / weight settings shared by app, CLI and watcher | P2 | L | 012, 014 | DONE (2026-09-16, executed in worktree `.claude/worktrees/015`, branch `feat/015-polish-preview-bun`, 5 commits ending 23f16ca, maintainer GUI check of Installed and Homebrew tabs and the sliders, merged to main) |
 | 016  | Bold each camelCase subword on its own (`toHaveBeen` → `t`o `Ha`ve `Be`en; acronyms `HTTPServer` → `HT`TP `Ser`ver) so Half fonts read well in Ghostty / Neovim | P2 | M | — | DONE (2026-09-24, executed in worktree `.claude/worktrees/agent-ab43647cdb893f144`, branch `advisor/016-camel-case-subwords`, 10 commits ending 0dd6f4b, one revision round (two-lookup design after HarfBuzz rejected the GSUB on a Nerd Font), reviewed and approved incl. smoke check on JetBrainsMonoNL Nerd Font, merged to main) |
 | 017  | [Make “Set up Chrome” preserve each webpage's fonts and convert supported local/web faces to Half](017-preserve-page-fonts-in-chrome.md) | P1 | L (48–88 hours) | Existing browser setup at 783e51f | TODO (2026-10-06; start with font-delivery feasibility test) |
+| 018  | [The app lists, previews and converts fonts inside `.ttc` collections (Menlo, Times, PT Mono…)](018-list-faces-inside-font-collections.md) | P2 | M | — | DONE (2026-10-20, executed in worktree `.claude/worktrees/advisor-018`, branch `advisor/018-font-collections`, 7 commits ending 13f6f54, one restart (first worktree was cut from stale origin/main), reviewed and approved, merged to main; manual GUI check pending) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
 ## Dependency notes
+
+- 018 was written 2026-10-20 at `42e9bbb` (`plan` variant: "have the app not skip these", after Menlo was missing from the app because macOS ships it as `/System/Library/Fonts/Menlo.ttc`). Python + `app/src/api.ts` only; no Rust change. Faces inside a collection are addressed as `<file>.ttc#<index>`; eager extraction of every collection face was measured (473 MB, 6 s) and rejected in favour of extracting on demand via `halfbold-api face-file`. Independent of 013 and 017.
 
 - 017 extends the browser setup/native host already present at `783e51f`. Its five stages are sequential: prove delivery, catalog/conversion service, preserve local typography, downloaded webfonts, then setup UX and full verification. Existing Slot choices remain available in an explicit mode. It supersedes blanket font replacement only in the new preserve mode; it does not depend on retiring the TUI in 013.
 
