@@ -16,6 +16,12 @@ from halfbold.scan import build_all, candidates_from_paths
 from halfbold.settings import Settings
 
 
+@pytest.fixture(autouse=True)
+def isolated_reset_paths(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(api, "ORIGINALS_PATH", tmp_path / "originals.json")
+    monkeypatch.setattr(api, "WATCHER_PLIST", tmp_path / "watcher.plist")
+
+
 def test_installed_lists_candidates_with_flags(tmp_path: Path, capsys):
     fonts = tmp_path / "fonts"
     fill_fonts_dir(fonts)
@@ -711,3 +717,67 @@ def test_vscode_rejects_family_without_half(tmp_path: Path, capsys):
     assert result == 1
     assert "Pair Half" in json.loads(capsys.readouterr().out)["error"]
     assert settings.read_text() == "{}\n"
+
+
+def test_reset_restores_slots_and_vscode(tmp_path: Path, capsys):
+    fonts = tmp_path / "fonts"
+    fill_fonts_dir(fonts)
+    build_all(fonts)
+    css = tmp_path / "halfbold.css"
+    css.write_text(CSS)
+    vscode_dir = tmp_path / "Code" / "User"
+    vscode_dir.mkdir(parents=True)
+    settings = vscode_dir / "settings.json"
+    settings.write_text('{"editor.fontFamily": "Menlo"}')
+    common = ["--fonts-dir", str(fonts)]
+    main(["web", "sans", "Pair", "--css", str(css), *common])
+    main(["vscode", "Pair", "--settings", str(settings), *common])
+    capsys.readouterr()
+
+    result = main(["reset", "--css", str(css), "--settings", str(settings), *common])
+
+    assert result == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["restored"] == ["vscode", "web"]
+    assert payload["web"]["sans"] == "Inter Half"
+    assert payload["deleted"] == []
+    assert json.loads(settings.read_text()) == {"editor.fontFamily": "Menlo"}
+    assert list(fonts.glob("*-Half.ttf")) != []
+
+
+def test_reset_delete_fonts_removes_watcher_then_half_fonts(
+    monkeypatch, tmp_path: Path, capsys
+):
+    fonts = tmp_path / "fonts"
+    fill_fonts_dir(fonts)
+    build_all(fonts)
+    css = tmp_path / "halfbold.css"
+    css.write_text(CSS)
+    events = []
+
+    def fake_remove_watcher(plist: Path) -> bool:
+        events.append(("watcher", sorted(p.name for p in fonts.glob("*-Half.ttf"))))
+        return True
+
+    monkeypatch.setattr(api, "remove_watcher", fake_remove_watcher)
+
+    result = main(
+        [
+            "reset",
+            "--delete-fonts",
+            "--css",
+            str(css),
+            "--settings",
+            str(tmp_path / "settings.json"),
+            "--fonts-dir",
+            str(fonts),
+        ]
+    )
+
+    assert result == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["watcher_removed"] is True
+    assert payload["deleted"] == ["Pair Half", "Var Half"]
+    assert events[0][1] != []
+    assert list(fonts.glob("*-Half.ttf")) == []
+    assert (fonts / "Pair-Regular.ttf").exists()

@@ -26,6 +26,14 @@ from halfbold.browser import browser_status, setup_browser
 from halfbold.build import STYLE_SUFFIX, build_halfbold_font
 from halfbold.cli import DEFAULT_CSS, DEFAULT_FONTS_DIR
 from halfbold.collection import open_font, split_member
+from halfbold.reset import (
+    VSCODE,
+    WEB,
+    default_originals_path,
+    remember,
+    restore_originals,
+    vscode_values,
+)
 from halfbold.scan import (
     KINDS,
     Candidate,
@@ -33,10 +41,12 @@ from halfbold.scan import (
     candidates_from_paths,
     find_installed_candidates,
     find_installed_half_families,
+    find_installed_half_fonts,
     read_font_info,
 )
 from halfbold.settings import Settings, load_settings, save_settings
 from halfbold.vscode import default_settings_path, use_in_vscode
+from halfbold.watcher import default_plist_path, remove_watcher
 from halfbold.web import get_web_fonts, set_web_font
 
 
@@ -47,6 +57,8 @@ def default_cache_dir() -> Path:
 
 
 CACHE_DIR = default_cache_dir()
+ORIGINALS_PATH = default_originals_path()
+WATCHER_PLIST = default_plist_path()
 CASK_INDEX_CACHE = "cask-index.json"
 NON_TAG = re.compile(r"[^A-Za-z0-9]")
 CACHE_LOCKS: dict[Path, threading.Lock] = {}
@@ -312,13 +324,34 @@ def installed_half_family(family: str, fonts_dir: Path) -> str:
 def web(args: argparse.Namespace) -> dict:
     if args.kind:
         family = installed_half_family(args.family, args.fonts_dir)
+        remember(ORIGINALS_PATH, WEB, get_web_fonts(args.css))
         set_web_font(args.css, args.kind, family)
     return get_web_fonts(args.css)
 
 
 def vscode(args: argparse.Namespace) -> dict:
     family = installed_half_family(args.family, args.fonts_dir)
+    remember(ORIGINALS_PATH, VSCODE, vscode_values(args.settings))
     return use_in_vscode(args.settings, family)
+
+
+def delete_half_fonts(fonts_dir: Path) -> list[str]:
+    fonts = find_installed_half_fonts(fonts_dir)
+    for path in fonts:
+        path.unlink()
+    return sorted(set(fonts.values()))
+
+
+def reset(args: argparse.Namespace) -> dict:
+    restored = restore_originals(ORIGINALS_PATH, args.css, args.settings)
+    watcher_removed = args.delete_fonts and remove_watcher(WATCHER_PLIST)
+    deleted = delete_half_fonts(args.fonts_dir) if args.delete_fonts else []
+    return {
+        "restored": restored,
+        "deleted": deleted,
+        "watcher_removed": watcher_removed,
+        "web": get_web_fonts(args.css),
+    }
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -377,6 +410,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     vscode_parser.add_argument("--fonts-dir", type=Path, default=DEFAULT_FONTS_DIR)
     vscode_parser.set_defaults(handler=vscode)
 
+    reset_parser = subparsers.add_parser("reset")
+    reset_parser.add_argument("--delete-fonts", action="store_true")
+    reset_parser.add_argument("--css", type=Path, default=DEFAULT_CSS)
+    reset_parser.add_argument("--settings", type=Path, default=default_settings_path())
+    reset_parser.add_argument("--fonts-dir", type=Path, default=DEFAULT_FONTS_DIR)
+    reset_parser.set_defaults(handler=reset)
     browser_parser = subparsers.add_parser("browser")
     browser_parser.add_argument("--setup", action="store_true")
     browser_parser.set_defaults(
