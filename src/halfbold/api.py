@@ -36,6 +36,7 @@ from halfbold.scan import (
     read_font_info,
 )
 from halfbold.settings import Settings, load_settings, save_settings
+from halfbold.vscode import default_settings_path, use_in_vscode
 from halfbold.web import get_web_fonts, set_web_font
 
 
@@ -300,15 +301,24 @@ def settings_command(args: argparse.Namespace) -> dict:
     return {"settings": current.as_dict(), "defaults": Settings().as_dict()}
 
 
+def installed_half_family(family: str, fonts_dir: Path) -> str:
+    if not family.endswith(f" {STYLE_SUFFIX}"):
+        family = f"{family} {STYLE_SUFFIX}"
+    if family not in find_installed_half_families(fonts_dir):
+        raise ValueError(f"{family!r} is not installed in {fonts_dir}")
+    return family
+
+
 def web(args: argparse.Namespace) -> dict:
     if args.kind:
-        family = args.family
-        if not family.endswith(f" {STYLE_SUFFIX}"):
-            family = f"{family} {STYLE_SUFFIX}"
-        if family not in find_installed_half_families(args.fonts_dir):
-            raise ValueError(f"{family!r} is not installed in {args.fonts_dir}")
+        family = installed_half_family(args.family, args.fonts_dir)
         set_web_font(args.css, args.kind, family)
     return get_web_fonts(args.css)
+
+
+def vscode(args: argparse.Namespace) -> dict:
+    family = installed_half_family(args.family, args.fonts_dir)
+    return use_in_vscode(args.settings, family)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -360,6 +370,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     web_parser.add_argument("--css", type=Path, default=DEFAULT_CSS)
     web_parser.add_argument("--fonts-dir", type=Path, default=DEFAULT_FONTS_DIR)
     web_parser.set_defaults(handler=web)
+
+    vscode_parser = subparsers.add_parser("vscode")
+    vscode_parser.add_argument("family")
+    vscode_parser.add_argument("--settings", type=Path, default=default_settings_path())
+    vscode_parser.add_argument("--fonts-dir", type=Path, default=DEFAULT_FONTS_DIR)
+    vscode_parser.set_defaults(handler=vscode)
 
     browser_parser = subparsers.add_parser("browser")
     browser_parser.add_argument("--setup", action="store_true")

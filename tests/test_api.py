@@ -679,3 +679,35 @@ def test_preview_needs_either_a_file_or_faces(tmp_path: Path):
         api.parse_args(["preview"])
     with pytest.raises(SystemExit):
         api.parse_args(["preview", str(tmp_path / "a.ttf"), "--face", "b.ttf"])
+
+
+def test_vscode_sets_editor_font_for_installed_half(tmp_path: Path, capsys):
+    fonts = tmp_path / "fonts"
+    fill_fonts_dir(fonts)
+    build_all(fonts)
+    settings = tmp_path / "settings.json"
+    settings.write_text("{}\n")
+
+    result = main(
+        ["vscode", "Pair", "--settings", str(settings), "--fonts-dir", str(fonts)]
+    )
+
+    assert result == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["font_family"] == "'Pair Half', monospace"
+    assert json.loads(settings.read_text())["editor.fontLigatures"] is True
+
+
+def test_vscode_rejects_family_without_half(tmp_path: Path, capsys):
+    fonts = tmp_path / "fonts"
+    fill_fonts_dir(fonts)
+    settings = tmp_path / "settings.json"
+    settings.write_text("{}\n")
+
+    result = main(
+        ["vscode", "Pair", "--settings", str(settings), "--fonts-dir", str(fonts)]
+    )
+
+    assert result == 1
+    assert "Pair Half" in json.loads(capsys.readouterr().out)["error"]
+    assert settings.read_text() == "{}\n"
