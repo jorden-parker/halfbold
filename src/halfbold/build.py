@@ -8,6 +8,7 @@ from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTFont
 from fontTools.varLib import instancer
 
+from halfbold.collection import open_font
 from halfbold.gsub import has_scripted_gsub, prepend_lookups
 from halfbold.settings import (
     BOLD_SHARE,
@@ -85,17 +86,17 @@ def load_font_pair(
     bold_weight: float,
 ) -> tuple[TTFont, TTFont]:
     if bold_path is None:
-        variable = TTFont(regular_path)
+        variable = open_font(regular_path)
         require_truetype_outlines(variable, regular_path)
         if "fvar" not in variable:
             raise ValueError(
                 f"{regular_path} is not a variable font; pass a Bold file as well"
             )
-        regular = instance_at_weight(TTFont(regular_path), regular_weight)
-        bold = instance_at_weight(TTFont(regular_path), bold_weight)
+        regular = instance_at_weight(open_font(regular_path), regular_weight)
+        bold = instance_at_weight(open_font(regular_path), bold_weight)
         return regular, bold
-    regular = TTFont(regular_path)
-    bold = TTFont(bold_path)
+    regular = open_font(regular_path)
+    bold = open_font(bold_path)
     require_truetype_outlines(regular, regular_path)
     require_truetype_outlines(bold, bold_path)
     return regular, bold

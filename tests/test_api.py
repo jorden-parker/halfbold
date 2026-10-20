@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 from conftest import make_collection, make_font
+from fontTools.ttLib import TTFont
 from test_scan import fill_fonts_dir
 from test_web import CSS
 
@@ -437,6 +438,35 @@ def make_menlo_collection(tmp_path, family="Menlo"):
     regular = make_font(parts / "Menlo-Regular.ttf", family, "Regular", 100, weight=400)
     bold = make_font(parts / "Menlo-Bold.ttf", family, "Bold", 200, weight=700)
     return make_collection(system / "Menlo.ttc", [regular, bold])
+
+
+def test_build_accepts_collection_faces(tmp_path, capsys):
+    ttc = make_menlo_collection(tmp_path)
+    out = tmp_path / "Menlo-Half.ttf"
+
+    assert main(["build", f"{ttc}#0", f"{ttc}#1", "-o", str(out)]) == 0
+    capsys.readouterr()
+
+    assert out.exists()
+    assert TTFont(out)["name"].getDebugName(1) == "Menlo Half"
+
+
+def test_preview_accepts_collection_faces_and_caches_half(
+    tmp_path, capsys, monkeypatch
+):
+    ttc = make_menlo_collection(tmp_path)
+    cache_dir = tmp_path / "cache"
+    monkeypatch.setattr(api, "CACHE_DIR", cache_dir)
+    faces = ["--face", f"{ttc}#0", "--face", f"{ttc}#1"]
+
+    assert main(["preview", *faces]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert "error" not in payload
+    first_mtime = Path(payload["half"]).stat().st_mtime
+
+    assert main(["preview", *faces]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert Path(payload["half"]).stat().st_mtime == first_mtime
 
 
 def test_installed_lists_faces_inside_a_collection(tmp_path, monkeypatch, capsys):
