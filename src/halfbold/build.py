@@ -26,6 +26,7 @@ FS_BOLD = 0x20
 FS_REGULAR = 0x40
 MAC_BOLD = 0x01
 MAC_ITALIC = 0x02
+APPLE_SHAPING_TABLES = ("morx", "mort", "feat")
 
 
 @dataclass(frozen=True)
@@ -61,6 +62,7 @@ def build_halfbold_font(
         settings.min_word_length,
     )
     add_calt_feature(regular, fea)
+    drop_apple_shaping(regular)
     rename_font(regular)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -77,6 +79,12 @@ def add_calt_feature(font: TTFont, fea: str) -> None:
     if original is not None:
         prepend_lookups(original.table, font["GSUB"].table, "calt")
         font["GSUB"] = original
+
+
+def drop_apple_shaping(font: TTFont) -> None:
+    for tag in APPLE_SHAPING_TABLES:
+        if tag in font:
+            del font[tag]
 
 
 def load_font_pair(

@@ -39,7 +39,7 @@ def test_cache_tag_changes_with_values():
 
 
 def test_cache_tag_carries_rules_version():
-    assert Settings().cache_tag().startswith("v3-")
+    assert Settings().cache_tag().startswith("v4-")
 
 
 def test_rules_tag_ignores_the_weights():

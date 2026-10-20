@@ -3,6 +3,7 @@ from pathlib import Path
 from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
 from fontTools.pens.boundsPen import BoundsPen
 from fontTools.ttLib import TTFont
+from fontTools.ttLib.tables.DefaultTable import DefaultTable
 
 from halfbold.build import (
     BOLD_SUFFIX,
@@ -88,6 +89,25 @@ def test_build_adds_bold_glyphs_and_calt(font_pair: tuple[Path, Path], tmp_path:
     features = {f.FeatureTag for f in font["GSUB"].table.FeatureList.FeatureRecord}
     assert "calt" in features
     assert font["name"].getBestFamilyName() == "Test Half"
+
+
+def test_build_drops_apple_shaping_tables_that_hide_calt(
+    font_pair: tuple[Path, Path], tmp_path: Path
+):
+    regular, bold = font_pair
+    aat_regular = tmp_path / "Aat-Regular.ttf"
+    font = TTFont(regular)
+    for tag in ("morx", "feat"):
+        font[tag] = DefaultTable(tag)
+        font[tag].data = b"\0" * 8
+    font.save(aat_regular)
+
+    out = tmp_path / "Aat-Half.ttf"
+    build_halfbold_font(aat_regular, bold, out)
+
+    tables = TTFont(out).keys()
+    assert "morx" not in tables
+    assert "feat" not in tables
 
 
 def test_rename_gives_half_font_its_own_postscript_and_full_names(
