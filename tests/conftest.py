@@ -4,6 +4,7 @@ import pytest
 from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
 from fontTools.fontBuilder import FontBuilder
 from fontTools.pens.ttGlyphPen import TTGlyphPen
+from fontTools.ttLib import TTCollection, TTFont
 from fontTools.ttLib.tables.TupleVariation import TupleVariation
 
 LETTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -57,6 +58,13 @@ def make_font(
     if features:
         addOpenTypeFeaturesFromString(builder.font, features, tables=["GSUB"])
     builder.save(path)
+    return path
+
+
+def make_collection(path: Path, faces: list[Path]) -> Path:
+    collection = TTCollection()
+    collection.fonts = [TTFont(face) for face in faces]
+    collection.save(path)
     return path
 
 
