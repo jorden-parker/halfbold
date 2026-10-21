@@ -11,6 +11,7 @@ from fontTools.varLib import instancer
 from halfbold.collection import open_font
 from halfbold.gsub import has_scripted_gsub, prepend_lookups
 from halfbold.settings import (
+    BOLD_ENDS,
     BOLD_SHARE,
     MAX_WORD_LENGTH,
     MIN_WORD_LENGTH,
@@ -62,6 +63,7 @@ def build_halfbold_font(
         settings.max_word_length,
         settings.bold_share,
         settings.min_word_length,
+        settings.bold_ends,
     )
     add_calt_feature(regular, fea)
     drop_apple_shaping(regular)
@@ -199,11 +201,22 @@ def bold_prefix_length(word_length: int, bold_share: float = BOLD_SHARE) -> int:
     return min(word_length, max(1, math.ceil(word_length * bold_share)))
 
 
+def bold_split(
+    word_length: int, bold_share: float = BOLD_SHARE, bold_ends: int = BOLD_ENDS
+) -> tuple[int, int]:
+    total = bold_prefix_length(word_length, bold_share)
+    if bold_ends == 1:
+        return total, 0
+    start = math.ceil(total / 2)
+    return start, total - start
+
+
 def build_feature_code(
     letters: Letters,
     max_word_length: int = MAX_WORD_LENGTH,
     bold_share: float = BOLD_SHARE,
     min_word_length: int = MIN_WORD_LENGTH,
+    bold_ends: int = BOLD_ENDS,
 ) -> str:
     lines = [
         f"@lower = [{' '.join(letters.lower)}];",
@@ -222,7 +235,7 @@ def build_feature_code(
         *start_rules(bool(letters.lower), bool(letters.upper)),
         "} MARK_STARTS;",
         "lookup COUNT {",
-        *count_rules(max_word_length, bold_share, min_word_length),
+        *count_rules(max_word_length, bold_share, min_word_length, bold_ends),
         "} COUNT;",
         "feature calt {",
         "  lookup MARK_STARTS;",
@@ -255,21 +268,50 @@ def start_rules(has_lower: bool, has_upper: bool) -> list[str]:
 
 
 def count_rules(
-    max_word_length: int, bold_share: float, min_word_length: int
+    max_word_length: int,
+    bold_share: float,
+    min_word_length: int,
+    bold_ends: int = BOLD_ENDS,
 ) -> list[str]:
     rules: list[str] = []
+    if bold_ends == 2:
+        rules.append(long_word_rule(max_word_length, bold_share))
     for length in range(max_word_length, 0, -1):
-        prefix = bold_prefix_length(length, bold_share)
-        rest = " ".join(["@plain"] * (length - 1))
-        if length < min_word_length:
-            rules.append(f"  sub @half' lookup TO_PLAIN {rest};".replace(" ;", ";"))
-        elif prefix > 1:
-            bolded = ["@plain' lookup TO_HALF"] * (prefix - 1)
-            consumed = ["@plain'"] * (length - prefix)
-            rules.append(f"  sub @half' {' '.join(bolded + consumed)};")
-        elif length > 1:
-            rules.append(f"  ignore sub @half' {rest};")
+        rule = length_rule(length, bold_share, min_word_length, bold_ends)
+        if rule is not None:
+            rules.append(rule)
     return rules
+
+
+def length_rule(
+    length: int, bold_share: float, min_word_length: int, bold_ends: int
+) -> str | None:
+    rest = " ".join(["@plain"] * (length - 1))
+    if length < min_word_length:
+        return f"  sub @half' lookup TO_PLAIN {rest};".replace(" ;", ";")
+    start, end = bold_split(length, bold_share, bold_ends)
+    if start == 1 and end == 0:
+        return f"  ignore sub @half' {rest};" if length > 1 else None
+    return sub_rule(bold_marks(length, start, end))
+
+
+def long_word_rule(max_word_length: int, bold_share: float) -> str:
+    start, _ = bold_split(max_word_length, bold_share, 1)
+    if start == 1:
+        return f"  ignore sub @half' {' '.join(['@plain'] * max_word_length)};"
+    return sub_rule(bold_marks(max_word_length, start, 0) + ["@plain"])
+
+
+def bold_marks(length: int, start: int, end: int) -> list[str]:
+    return (
+        ["@plain' lookup TO_HALF"] * (start - 1)
+        + ["@plain'"] * (length - start - end)
+        + ["@plain' lookup TO_HALF"] * end
+    )
+
+
+def sub_rule(marked: list[str]) -> str:
+    return f"  sub @half' {' '.join(marked)};"
 
 
 def rename_font(font: TTFont, style: str = PLAIN_STYLE) -> None:

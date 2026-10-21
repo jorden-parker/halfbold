@@ -48,7 +48,7 @@ The classification of a Candidate as sans, serif or mono.
 _Avoid_: category, class
 
 **Settings**:
-The one set of build choices applied to every Half font: Bold share, Shortest word, Plain and Bold weights, and the longest word that gets its own rule.
+The one set of build choices applied to every Half font: Bold share, Bold ends, Shortest word, Plain and Bold weights, and the longest word that gets its own rule.
 _Avoid_: options, preferences, tuning (UI heading only)
 
 **Plain weight**, **Bold weight**:
@@ -58,6 +58,10 @@ _Avoid_: regular weight, boldness (that is Bold share), thickness
 **Bold share**:
 The fraction of each word's letters drawn bold, counted from the start and rounded up, at least one letter.
 _Avoid_: boldness, amount, ratio
+
+**Bold ends**:
+Where a word's bold letters go: the start only (default), or split between the start and the end, with the extra letter at the start. The number of bold letters is still set by Bold share.
+_Avoid_: mode, style, both sides
 
 **Shortest word**:
 The word length below which a word stays entirely plain.

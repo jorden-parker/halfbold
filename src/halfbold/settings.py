@@ -6,6 +6,7 @@ from pathlib import Path
 
 RULES_VERSION = 4
 BOLD_SHARE = 0.5
+BOLD_ENDS = 1
 MIN_WORD_LENGTH = 2
 MAX_WORD_LENGTH = 20
 REGULAR_WEIGHT = 400
@@ -27,6 +28,7 @@ def default_settings_path() -> Path:
 @dataclass(frozen=True)
 class Settings:
     bold_share: float = BOLD_SHARE
+    bold_ends: int = BOLD_ENDS
     min_word_length: int = MIN_WORD_LENGTH
     max_word_length: int = MAX_WORD_LENGTH
     regular_weight: float = REGULAR_WEIGHT
@@ -35,6 +37,8 @@ class Settings:
     def validated(self) -> Settings:
         if not 0 < self.bold_share <= 1:
             raise ValueError("bold_share must be between 0 and 1")
+        if self.bold_ends not in (1, 2):
+            raise ValueError("bold_ends must be 1 (start) or 2 (start and end)")
         if self.min_word_length < 1:
             raise ValueError("min_word_length must be at least 1")
         if self.max_word_length < self.min_word_length:
@@ -62,6 +66,7 @@ class Settings:
         return (
             f"v{RULES_VERSION}-s{round(self.bold_share * 100)}"
             f"-m{self.min_word_length}-x{self.max_word_length}"
+            f"-e{self.bold_ends}"
         )
 
     def cache_tag(self) -> str:

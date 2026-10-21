@@ -26,6 +26,21 @@ def test_merged_coerces_and_validates():
         Settings().merged({"min_word_length": 30})
 
 
+def test_bold_ends_defaults_to_start_only():
+    assert Settings().bold_ends == 1
+
+
+def test_bold_ends_is_coerced_from_text():
+    assert Settings().merged({"bold_ends": "2"}).bold_ends == 2
+
+
+def test_bold_ends_rejects_values_other_than_one_or_two():
+    with pytest.raises(ValueError, match="bold_ends"):
+        Settings().merged({"bold_ends": 3})
+    with pytest.raises(ValueError, match="bold_ends"):
+        Settings().merged({"bold_ends": 0})
+
+
 def test_corrupt_file_falls_back_to_defaults(tmp_path: Path):
     path = tmp_path / "settings.json"
     path.write_text("{not json")
@@ -36,6 +51,7 @@ def test_corrupt_file_falls_back_to_defaults(tmp_path: Path):
 
 def test_cache_tag_changes_with_values():
     assert Settings().cache_tag() != Settings(bold_share=0.6).cache_tag()
+    assert Settings().cache_tag() != Settings(bold_ends=2).cache_tag()
 
 
 def test_cache_tag_carries_rules_version():

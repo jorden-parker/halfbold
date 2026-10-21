@@ -101,6 +101,7 @@ const faceEls: Record<"regular_weight" | "bold_weight", HTMLSpanElement> = {
 };
 const knobs: Record<keyof Omit<Settings, "max_word_length">, { input: HTMLInputElement; out: HTMLOutputElement }> = {
   bold_share: { input: $("#knob-share"), out: $("#out-share") },
+  bold_ends: { input: $("#knob-ends"), out: $("#out-ends") },
   min_word_length: { input: $("#knob-min"), out: $("#out-min") },
   regular_weight: { input: $("#knob-regular"), out: $("#out-regular") },
   bold_weight: { input: $("#knob-bold"), out: $("#out-bold") },
@@ -383,6 +384,7 @@ let shownHalf: string | null = null;
 function knobValue(name: keyof typeof knobs, value: number): string {
   if (name === "bold_share") return `${Math.round(value * 100)}%`;
   if (name === "min_word_length") return `${value}`;
+  if (name === "bold_ends") return value === 2 ? "Start + end" : "Start";
   return `${Math.round(value)}`;
 }
 

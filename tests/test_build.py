@@ -11,6 +11,7 @@ from halfbold.build import (
     Letters,
     bold_face_path,
     bold_prefix_length,
+    bold_split,
     build_bold_face,
     build_feature_code,
     build_halfbold_font,
@@ -26,6 +27,27 @@ def test_bold_prefix_is_half_rounded_up():
     assert [bold_prefix_length(n) for n in (2, 3, 4, 5, 6)] == [1, 2, 2, 3, 3]
     assert [bold_prefix_length(n, 0.25) for n in (2, 4, 8)] == [1, 1, 2]
     assert [bold_prefix_length(n, 1.0) for n in (2, 5)] == [2, 5]
+
+
+def test_bold_split_puts_the_extra_letter_at_the_start():
+    assert [bold_split(n, 0.5, 1) for n in (2, 3, 5, 7)] == [
+        (1, 0),
+        (2, 0),
+        (3, 0),
+        (4, 0),
+    ]
+    assert [bold_split(n, 0.5, 2) for n in (2, 3, 4, 5, 7)] == [
+        (1, 0),
+        (1, 1),
+        (1, 1),
+        (2, 1),
+        (2, 2),
+    ]
+
+
+def test_bold_ends_one_leaves_the_feature_code_unchanged():
+    letters = Letters(["a", "b"], ["A"])
+    assert build_feature_code(letters, 20, 0.5, 2, 1) == build_feature_code(letters)
 
 
 def block(fea: str, name: str) -> list[str]:

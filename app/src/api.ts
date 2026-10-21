@@ -33,6 +33,7 @@ export interface CaskEntry {
 
 export interface Settings {
   bold_share: number;
+  bold_ends: number;
   min_word_length: number;
   max_word_length: number;
   regular_weight: number;

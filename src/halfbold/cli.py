@@ -115,6 +115,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Share of each word to bold, 0 to 1 (default from settings)",
     )
     parser.add_argument(
+        "--bold-ends",
+        type=int,
+        choices=(1, 2),
+        default=settings.bold_ends,
+        help="Bold the start of each word (1) or its start and end (2)",
+    )
+    parser.add_argument(
         "--min-word-length",
         type=int,
         default=settings.min_word_length,
@@ -245,6 +252,7 @@ def main(argv: list[str] | None = None) -> int:
     settings = load_settings().merged(
         {
             "bold_share": args.bold_share,
+            "bold_ends": args.bold_ends,
             "min_word_length": args.min_word_length,
             "max_word_length": args.max_word_length,
             "regular_weight": args.regular_weight,

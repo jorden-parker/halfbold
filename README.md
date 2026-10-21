@@ -100,7 +100,9 @@ bold instead of being smeared.
 
 `--bold-share 0.4` bolds fewer letters per word and `--min-word-length 4`
 leaves short words plain; without flags, every value comes from the saved
-settings file. Output written into `~/Library/Fonts` is installed immediately
+settings file. Bold ends (`--bold-ends 2`) splits the bold letters between the
+start and the end of each word; the default `1` bolds the start only, the Bionic
+Reading convention (see `plans/research/bionic-reading.md`). Output written into `~/Library/Fonts` is installed immediately
 on macOS.
 
 ```sh
