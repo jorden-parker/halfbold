@@ -13,8 +13,12 @@ A font family found on disk that can be converted: either two or more Faces at d
 _Avoid_: font entry, source font
 
 **Half font**:
-The converted output of a Candidate, installed next to the original under the family name plus ` Half`, always named Regular at weight 400 whichever Faces built it.
+The converted output of a Candidate, installed next to the original under the family name plus ` Half` as two Faces: the Regular, which carries the half-bold effect, and the Half Bold face. The Regular is always named Regular at weight 400 whichever Faces built it.
 _Avoid_: bionic font, output font, converted font
+
+**Half Bold face**:
+The source family's own bold outlines installed into the Half font family, with no half-bold rules, so text that is already bold is drawn as ordinary bold.
+_Avoid_: bold companion, bold variant
 
 **Preview**:
 A Half font built into the cache, not installed, so the app can show the half-bold result before the user commits.

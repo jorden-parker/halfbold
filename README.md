@@ -93,6 +93,11 @@ Regular and Bold gives you those two. `halfbold list` names the faces it
 picked. Naming two font files yourself uses those files and ignores the
 weights.
 
+Each installed Half font also gets a Half Bold face: the family's own bold
+outlines, drawn as designed at the bold weight with no half-bold effect. Apps
+pick it for text that is already bold, so `<b>` and headings render as ordinary
+bold instead of being smeared.
+
 `--bold-share 0.4` bolds fewer letters per word and `--min-word-length 4`
 leaves short words plain; without flags, every value comes from the saved
 settings file. Output written into `~/Library/Fonts` is installed immediately

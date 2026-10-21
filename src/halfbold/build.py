@@ -21,6 +21,8 @@ BOLD_SUFFIX = ".half"
 STYLE_SUFFIX = "Half"
 PLAIN_STYLE = "Regular"
 PLAIN_WEIGHT = 400
+BOLD_STYLE = "Bold"
+BOLD_WEIGHT_CLASS = 700
 FS_ITALIC = 0x01
 FS_BOLD = 0x20
 FS_REGULAR = 0x40
@@ -71,6 +73,25 @@ def build_halfbold_font(
     return letters.names
 
 
+def build_bold_face(
+    regular_path: Path,
+    bold_path: Path | None,
+    output_path: Path,
+    settings: Settings | None = None,
+) -> None:
+    settings = settings or Settings()
+    bold = load_bold_source(regular_path, bold_path, settings.bold_weight)
+    rename_font(bold, BOLD_STYLE)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    bold.recalcBBoxes = False
+    bold.save(output_path)
+
+
+def bold_face_path(output_path: Path) -> Path:
+    return output_path.with_name(f"{output_path.stem}Bold{output_path.suffix}")
+
+
 def add_calt_feature(font: TTFont, fea: str) -> None:
     original = font["GSUB"] if has_scripted_gsub(font) else None
     if original is not None:
@@ -93,21 +114,37 @@ def load_font_pair(
     regular_weight: float,
     bold_weight: float,
 ) -> tuple[TTFont, TTFont]:
-    if bold_path is None:
-        variable = open_font(regular_path)
-        require_truetype_outlines(variable, regular_path)
-        if "fvar" not in variable:
-            raise ValueError(
-                f"{regular_path} is not a variable font; pass a Bold file as well"
-            )
-        regular = instance_at_weight(open_font(regular_path), regular_weight)
-        bold = instance_at_weight(open_font(regular_path), bold_weight)
-        return regular, bold
-    regular = open_font(regular_path)
-    bold = open_font(bold_path)
-    require_truetype_outlines(regular, regular_path)
-    require_truetype_outlines(bold, bold_path)
+    regular = load_plain_source(regular_path, bold_path, regular_weight)
+    bold = load_bold_source(regular_path, bold_path, bold_weight)
     return regular, bold
+
+
+def load_plain_source(
+    regular_path: Path, bold_path: Path | None, regular_weight: float
+) -> TTFont:
+    if bold_path is None:
+        return load_variable_instance(regular_path, regular_weight)
+    regular = open_font(regular_path)
+    require_truetype_outlines(regular, regular_path)
+    return regular
+
+
+def load_bold_source(
+    regular_path: Path, bold_path: Path | None, bold_weight: float
+) -> TTFont:
+    if bold_path is None:
+        return load_variable_instance(regular_path, bold_weight)
+    bold = open_font(bold_path)
+    require_truetype_outlines(bold, bold_path)
+    return bold
+
+
+def load_variable_instance(path: Path, weight: float) -> TTFont:
+    variable = open_font(path)
+    require_truetype_outlines(variable, path)
+    if "fvar" not in variable:
+        raise ValueError(f"{path} is not a variable font; pass a Bold file as well")
+    return instance_at_weight(variable, weight)
 
 
 def instance_at_weight(font: TTFont, weight: float) -> TTFont:
@@ -235,18 +272,18 @@ def count_rules(
     return rules
 
 
-def rename_font(font: TTFont) -> None:
+def rename_font(font: TTFont, style: str = PLAIN_STYLE) -> None:
     name_table = font["name"]
     family = name_table.getBestFamilyName()
     base_family = " ".join(part for part in family.split() if part != "Variable")
     new_family = f"{base_family} {STYLE_SUFFIX}"
-    postscript = f"{new_family.replace(' ', '')}-{PLAIN_STYLE}"
+    postscript = f"{new_family.replace(' ', '')}-{style}"
     names = {
         1: new_family,
         16: new_family,
-        2: PLAIN_STYLE,
-        17: PLAIN_STYLE,
-        4: f"{new_family} {PLAIN_STYLE}",
+        2: style,
+        17: style,
+        4: f"{new_family} {style}",
         6: postscript,
         3: f"{postscript};{STYLE_SUFFIX}",
     }
@@ -263,11 +300,17 @@ def rename_font(font: TTFont) -> None:
             name_table.setName(value, name_id, 3, 1, 0x409)
     for name_id in (21, 22):
         name_table.removeNames(name_id)
-    reset_weight(font)
+    set_face_flags(font, style)
 
 
-def reset_weight(font: TTFont) -> None:
+def set_face_flags(font: TTFont, style: str) -> None:
     os2 = font["OS/2"]
-    os2.usWeightClass = PLAIN_WEIGHT
-    os2.fsSelection = (os2.fsSelection & ~(FS_BOLD | FS_ITALIC)) | FS_REGULAR
-    font["head"].macStyle &= ~(MAC_BOLD | MAC_ITALIC)
+    head = font["head"]
+    if style == BOLD_STYLE:
+        os2.usWeightClass = BOLD_WEIGHT_CLASS
+        os2.fsSelection = (os2.fsSelection & ~(FS_REGULAR | FS_ITALIC)) | FS_BOLD
+        head.macStyle = (head.macStyle & ~MAC_ITALIC) | MAC_BOLD
+    else:
+        os2.usWeightClass = PLAIN_WEIGHT
+        os2.fsSelection = (os2.fsSelection & ~(FS_BOLD | FS_ITALIC)) | FS_REGULAR
+        head.macStyle &= ~(MAC_BOLD | MAC_ITALIC)

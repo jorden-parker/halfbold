@@ -48,7 +48,21 @@ def test_build_writes_half_font(font_pair, tmp_path: Path, capsys):
     assert result == 0
     payload = json.loads(capsys.readouterr().out)
     assert output.exists()
+    assert (tmp_path / "Out-HalfBold.ttf").exists()
+    assert payload["bold_face"] == str(tmp_path / "Out-HalfBold.ttf")
     assert payload["letters"] == 52
+
+
+def test_preview_writes_no_half_bold_face(
+    font_pair, tmp_path: Path, capsys, monkeypatch
+):
+    regular, bold = font_pair
+    cache_dir = tmp_path / "cache"
+    monkeypatch.setattr(api, "CACHE_DIR", cache_dir)
+
+    assert main(["preview", str(regular), str(bold)]) == 0
+
+    assert not list(cache_dir.glob("*HalfBold*"))
 
 
 def test_preview_caches_half_in_cache_dir(
@@ -780,4 +794,5 @@ def test_reset_delete_fonts_removes_watcher_then_half_fonts(
     assert payload["deleted"] == ["Pair Half", "Var Half"]
     assert events[0][1] != []
     assert list(fonts.glob("*-Half.ttf")) == []
+    assert list(fonts.glob("*-HalfBold.ttf")) == []
     assert (fonts / "Pair-Regular.ttf").exists()

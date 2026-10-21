@@ -6,15 +6,20 @@ from fontTools.ttLib import TTFont
 from fontTools.ttLib.tables.DefaultTable import DefaultTable
 
 from halfbold.build import (
+    BOLD_STYLE,
     BOLD_SUFFIX,
     Letters,
+    bold_face_path,
     bold_prefix_length,
+    build_bold_face,
     build_feature_code,
     build_halfbold_font,
     copy_bold_glyphs,
+    rename_font,
     word_letter_glyphs,
 )
 from halfbold.cli import main
+from halfbold.settings import Settings
 
 
 def test_bold_prefix_is_half_rounded_up():
@@ -140,6 +145,7 @@ def test_cli_defaults_output_next_to_regular(font_pair: tuple[Path, Path], capsy
     regular, bold = font_pair
     assert main([str(regular), str(bold)]) == 0
     assert regular.with_name("Test-Regular-Half.ttf").exists()
+    assert regular.with_name("Test-Regular-HalfBold.ttf").exists()
     assert "52 letter glyphs" in capsys.readouterr().out
 
 
@@ -217,3 +223,75 @@ def test_copied_glyphs_get_bounds_that_hold_their_outline(font_pair, tmp_path: P
         assert glyph.yMin <= pen.bounds[1]
         assert glyph.xMax >= pen.bounds[2]
         assert glyph.yMax >= pen.bounds[3]
+
+
+def test_rename_as_bold_makes_the_half_bold_face(font_pair: tuple[Path, Path]):
+    font = TTFont(font_pair[1])
+    rename_font(font, BOLD_STYLE)
+    name = font["name"]
+    assert name.getDebugName(1) == "Test Half"
+    assert name.getDebugName(2) == "Bold"
+    assert name.getDebugName(4) == "Test Half Bold"
+    assert name.getDebugName(6) == "TestHalf-Bold"
+    assert name.getDebugName(16) == "Test Half"
+    assert name.getDebugName(17) == "Bold"
+    assert font["OS/2"].usWeightClass == 700
+    assert font["OS/2"].fsSelection & 0x20
+    assert not font["OS/2"].fsSelection & 0x40
+    assert font["head"].macStyle & 0x01
+
+
+def test_bold_face_is_the_bold_source_without_half_glyphs(
+    font_pair: tuple[Path, Path], tmp_path: Path
+):
+    regular, bold = font_pair
+    out = tmp_path / "Test-HalfBold.ttf"
+    build_bold_face(regular, bold, out)
+
+    font = TTFont(out)
+    assert font["name"].getBestFamilyName() == "Test Half"
+    assert font["name"].getDebugName(2) == "Bold"
+    assert not any(g.endswith(BOLD_SUFFIX) for g in font.getGlyphOrder())
+    assert font["hmtx"]["a"][0] == 300
+
+
+def test_bold_face_from_variable_font_is_static_bold(
+    variable_font: Path, tmp_path: Path
+):
+    out = tmp_path / "TestVar-HalfBold.ttf"
+    build_bold_face(variable_font, None, out, Settings(bold_weight=700))
+
+    font = TTFont(out)
+    assert "fvar" not in font
+    assert font["name"].getDebugName(2) == "Bold"
+    assert font["OS/2"].usWeightClass == 700
+
+
+def test_bold_face_from_variable_font_is_drawn_at_bold_weight(
+    variable_font: Path, tmp_path: Path
+):
+    out = tmp_path / "TestVar-HalfBold.ttf"
+    build_bold_face(variable_font, None, out, Settings(bold_weight=700))
+
+    font = TTFont(out)
+    glyph = font["glyf"]["a"]
+    glyph.recalcBounds(font["glyf"])
+    assert glyph.xMax == 200
+
+
+def test_bold_face_keeps_the_source_ligatures(
+    ligature_font_pair: tuple[Path, Path], tmp_path: Path
+):
+    regular, bold = ligature_font_pair
+    out = tmp_path / "Liga-HalfBold.ttf"
+    build_bold_face(regular, bold, out)
+
+    gsub = TTFont(out)["GSUB"].table
+    tags = {record.FeatureTag for record in gsub.FeatureList.FeatureRecord}
+    assert "liga" in tags
+
+
+def test_bold_face_path_sits_next_to_the_half_font(tmp_path: Path):
+    assert (
+        bold_face_path(tmp_path / "Inter-Half.ttf") == tmp_path / "Inter-HalfBold.ttf"
+    )

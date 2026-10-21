@@ -4,7 +4,12 @@ import tempfile
 from pathlib import Path
 
 from halfbold.brewcask import cask_font_dir
-from halfbold.build import STYLE_SUFFIX, build_halfbold_font
+from halfbold.build import (
+    STYLE_SUFFIX,
+    bold_face_path,
+    build_bold_face,
+    build_halfbold_font,
+)
 from halfbold.desktop import launch_desktop
 from halfbold.preview import preview_candidates, preview_files
 from halfbold.scan import KINDS, build_all, find_installed_half_families
@@ -254,5 +259,6 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     output = args.output or args.regular.with_name(f"{args.regular.stem}-Half.ttf")
     letters = build_halfbold_font(args.regular, args.bold, output, settings)
+    build_bold_face(args.regular, args.bold, bold_face_path(output), settings)
     print(f"wrote {output} ({len(letters)} letter glyphs bolded)")
     return 0

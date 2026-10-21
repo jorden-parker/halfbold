@@ -23,7 +23,12 @@ from halfbold.brewcask import (
     search_font_casks,
 )
 from halfbold.browser import browser_status, setup_browser
-from halfbold.build import STYLE_SUFFIX, build_halfbold_font
+from halfbold.build import (
+    STYLE_SUFFIX,
+    bold_face_path,
+    build_bold_face,
+    build_halfbold_font,
+)
 from halfbold.cli import DEFAULT_CSS, DEFAULT_FONTS_DIR
 from halfbold.collection import open_font, split_member
 from halfbold.reset import (
@@ -201,8 +206,10 @@ def build(args: argparse.Namespace) -> dict:
     output = args.output or args.regular.with_name(f"{args.regular.stem}-Half.ttf")
     settings = load_settings()
     letters = build_halfbold_font(args.regular, args.bold, output, settings)
+    build_bold_face(args.regular, args.bold, bold_face_path(output), settings)
     return {
         "output": str(output),
+        "bold_face": str(bold_face_path(output)),
         "letters": len(letters),
         "settings": settings.as_dict(),
     }

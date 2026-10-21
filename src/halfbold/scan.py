@@ -7,7 +7,12 @@ from typing import Literal
 
 from fontTools.ttLib import TTFont, TTLibError
 
-from halfbold.build import STYLE_SUFFIX, build_halfbold_font
+from halfbold.build import (
+    STYLE_SUFFIX,
+    bold_face_path,
+    build_bold_face,
+    build_halfbold_font,
+)
 from halfbold.collection import (
     COLLECTION_SUFFIX,
     collection_members,
@@ -73,6 +78,10 @@ class Candidate:
         return (self.output_dir or self.regular.parent) / f"{stem}-{STYLE_SUFFIX}.ttf"
 
     @property
+    def bold_face_output(self) -> Path:
+        return bold_face_path(self.output)
+
+    @property
     def sources(self) -> list[Path]:
         return [source_file(p) for p in (self.regular, self.bold) if p is not None]
 
@@ -85,9 +94,10 @@ class Candidate:
         return None
 
     def is_stale(self) -> bool:
-        if not self.output.exists():
+        outputs = (self.output, self.bold_face_output)
+        if not all(path.exists() for path in outputs):
             return True
-        built = self.output.stat().st_mtime
+        built = min(path.stat().st_mtime for path in outputs)
         return any(p.stat().st_mtime > built for p in self.sources)
 
 
@@ -358,6 +368,9 @@ def build_all(
         try:
             build_halfbold_font(
                 candidate.regular, candidate.bold, candidate.output, settings
+            )
+            build_bold_face(
+                candidate.regular, candidate.bold, candidate.bold_face_output, settings
             )
             report.append(
                 f"built       {candidate.output.name}  "

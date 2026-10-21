@@ -56,6 +56,8 @@ def test_build_all_skips_up_to_date_and_ignores_own_output(tmp_path: Path):
     assert sorted(line.split()[0] for line in first) == ["built", "built"]
     assert (fonts / "Pair-Half.ttf").exists()
     assert (fonts / "Var-Half.ttf").exists()
+    assert (fonts / "Pair-HalfBold.ttf").exists()
+    assert (fonts / "Var-HalfBold.ttf").exists()
 
     second = build_all(fonts)
     assert all(line.startswith("up to date") for line in second)
@@ -74,6 +76,18 @@ def test_build_all_rebuilds_when_source_is_newer(tmp_path: Path):
 
     assert any(line.startswith("built") and "Var-Half" in line for line in report)
     assert any(line.startswith("up to date") and "Pair-Half" in line for line in report)
+
+
+def test_build_all_rebuilds_when_half_bold_face_is_missing(tmp_path: Path):
+    fonts = tmp_path / "fonts"
+    fill_fonts_dir(fonts)
+    build_all(fonts)
+    (fonts / "Pair-HalfBold.ttf").unlink()
+
+    report = build_all(fonts)
+
+    assert any(line.startswith("built") and "Pair-Half" in line for line in report)
+    assert (fonts / "Pair-HalfBold.ttf").exists()
 
 
 def test_cli_all_dry_run(tmp_path: Path, capsys):
