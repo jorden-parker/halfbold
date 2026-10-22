@@ -22,25 +22,23 @@ from halfbold.brewcask import (
     installed_font_paths,
     search_font_casks,
 )
-from halfbold.browser import browser_status, setup_browser
+from halfbold.browser import browser_status, disable_browser, setup_browser
 from halfbold.build import (
     STYLE_SUFFIX,
     bold_face_path,
     build_bold_face,
     build_halfbold_font,
 )
-from halfbold.cli import DEFAULT_CSS, DEFAULT_FONTS_DIR
+from halfbold.cli import DEFAULT_FONTS_DIR
 from halfbold.collection import open_font, split_member
 from halfbold.reset import (
     VSCODE,
-    WEB,
     default_originals_path,
     remember,
     restore_originals,
     vscode_values,
 )
 from halfbold.scan import (
-    KINDS,
     Candidate,
     Face,
     candidates_from_paths,
@@ -52,7 +50,6 @@ from halfbold.scan import (
 from halfbold.settings import Settings, load_settings, save_settings
 from halfbold.vscode import default_settings_path, use_in_vscode
 from halfbold.watcher import default_plist_path, remove_watcher
-from halfbold.web import get_web_fonts, set_web_font
 
 
 def default_cache_dir() -> Path:
@@ -328,14 +325,6 @@ def installed_half_family(family: str, fonts_dir: Path) -> str:
     return family
 
 
-def web(args: argparse.Namespace) -> dict:
-    if args.kind:
-        family = installed_half_family(args.family, args.fonts_dir)
-        remember(ORIGINALS_PATH, WEB, get_web_fonts(args.css))
-        set_web_font(args.css, args.kind, family)
-    return get_web_fonts(args.css)
-
-
 def vscode(args: argparse.Namespace) -> dict:
     family = installed_half_family(args.family, args.fonts_dir)
     remember(ORIGINALS_PATH, VSCODE, vscode_values(args.settings))
@@ -350,14 +339,15 @@ def delete_half_fonts(fonts_dir: Path) -> list[str]:
 
 
 def reset(args: argparse.Namespace) -> dict:
-    restored = restore_originals(ORIGINALS_PATH, args.css, args.settings)
+    restored = restore_originals(ORIGINALS_PATH, args.settings)
     watcher_removed = args.delete_fonts and remove_watcher(WATCHER_PLIST)
+    disable_browser(delete_served_fonts=args.delete_fonts)
     deleted = delete_half_fonts(args.fonts_dir) if args.delete_fonts else []
     return {
         "restored": restored,
         "deleted": deleted,
         "watcher_removed": watcher_removed,
-        "web": get_web_fonts(args.css),
+        "chrome_disabled": True,
     }
 
 
@@ -404,13 +394,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     cask_install_parser.set_defaults(handler=cask_install)
 
-    web_parser = subparsers.add_parser("web")
-    web_parser.add_argument("kind", nargs="?", choices=KINDS)
-    web_parser.add_argument("family", nargs="?")
-    web_parser.add_argument("--css", type=Path, default=DEFAULT_CSS)
-    web_parser.add_argument("--fonts-dir", type=Path, default=DEFAULT_FONTS_DIR)
-    web_parser.set_defaults(handler=web)
-
     vscode_parser = subparsers.add_parser("vscode")
     vscode_parser.add_argument("family")
     vscode_parser.add_argument("--settings", type=Path, default=default_settings_path())
@@ -419,16 +402,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     reset_parser = subparsers.add_parser("reset")
     reset_parser.add_argument("--delete-fonts", action="store_true")
-    reset_parser.add_argument("--css", type=Path, default=DEFAULT_CSS)
     reset_parser.add_argument("--settings", type=Path, default=default_settings_path())
     reset_parser.add_argument("--fonts-dir", type=Path, default=DEFAULT_FONTS_DIR)
     reset_parser.set_defaults(handler=reset)
     browser_parser = subparsers.add_parser("browser")
     browser_parser.add_argument("--setup", action="store_true")
     browser_parser.set_defaults(
-        handler=lambda args: (
-            setup_browser(DEFAULT_CSS) if args.setup else browser_status(DEFAULT_CSS)
-        )
+        handler=lambda args: setup_browser() if args.setup else browser_status()
     )
 
     settings_parser = subparsers.add_parser("settings")
@@ -439,8 +419,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     serve_parser.set_defaults(handler=None)
 
     args = parser.parse_args(argv)
-    if args.command == "web" and args.kind and not args.family:
-        parser.error("web KIND requires FAMILY")
     if args.command == "preview" and bool(args.regular) == bool(args.faces):
         parser.error("preview takes either REGULAR or --face, not both")
     return args

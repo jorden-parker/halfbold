@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
   "name": "halfbold",
-  "version": "0.4.0",
-  "description": "Render every website in a locally installed half-bold reading font",
+  "version": "0.5.0",
+  "description": "Convert each website's own fonts into half-bold reading fonts",
   "permissions": [
     "alarms",
+    "fontSettings",
     "storage",
     "nativeMessaging",
     "scripting"
@@ -17,11 +18,9 @@
       "matches": [
         "<all_urls>"
       ],
-      "css": [
-        "halfbold.css"
-      ],
       "js": [
-        "shadow.js"
+        "pagefonts-core.js",
+        "pagefonts.js"
       ],
       "run_at": "document_start",
       "all_frames": true
@@ -30,7 +29,7 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "halfbold.css"
+        "fonts/*.ttf"
       ],
       "matches": [
         "<all_urls>"

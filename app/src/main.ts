@@ -6,18 +6,14 @@ import {
   caskInstall,
   casks,
   installed,
-  KINDS,
   preview,
   reset as resetApi,
   settings as settingsApi,
   setVscodeFont,
-  webFonts,
   type Candidate,
   type CaskEntry,
   type Face,
-  type Kind,
   type Settings,
-  type WebFonts,
 } from "./api";
 import { faceAlias, loadFace, retireFace } from "./fonts";
 import { resetSummary } from "./reset";
@@ -28,7 +24,6 @@ const DEFAULT_SAMPLE_TEXT =
   "the first half of every word is bold, because your eyes only need the " +
   "start of a word to recognise it.";
 const SAMPLE_TEXT_KEY = "halfbold.sampleText";
-const HALF_SUFFIX = " Half";
 
 type Tab = "installed" | "brew";
 type Selection = { tab: "installed"; candidate: Candidate } | { tab: "brew"; token: string } | null;
@@ -42,7 +37,6 @@ interface State {
   caskFacesPending: Set<string>;
   caskPrefetch: Set<string>;
   selected: Selection;
-  web: WebFonts | null;
   sampleText: string;
   settings: Settings | null;
   defaults: Settings | null;
@@ -60,7 +54,6 @@ const state: State = {
   caskFacesPending: new Set(),
   caskPrefetch: new Set(),
   selected: null,
-  web: null,
   sampleText: loadSampleText(),
   settings: null,
   defaults: null,
@@ -72,7 +65,6 @@ const state: State = {
 const $ = <T extends HTMLElement>(selector: string) => document.querySelector<T>(selector)!;
 const tabInstalledEl = $<HTMLButtonElement>("#tab-installed");
 const tabBrewEl = $<HTMLButtonElement>("#tab-brew");
-const slotsEl = $<HTMLSpanElement>("#slots");
 const filterEl = $<HTMLInputElement>("#filter");
 const listEl = $<HTMLUListElement>("#list");
 const listNoteEl = $<HTMLDivElement>("#list-note");
@@ -183,22 +175,6 @@ function stillSelected(selection: Selection): boolean {
 
 function isCurrent(key: string, gen: number): boolean {
   return key === selectionKey(state.selected) && gen === state.gen;
-}
-
-function renderSlots() {
-  slotsEl.textContent = "";
-  if (!state.web) return;
-  for (const kind of KINDS) {
-    const span = document.createElement("span");
-    const label = document.createElement("b");
-    label.textContent = kind;
-    span.append(label, ` ${stripHalf(state.web[kind])}`);
-    slotsEl.append(span);
-  }
-}
-
-function stripHalf(family: string): string {
-  return family.endsWith(HALF_SUFFIX) ? family.slice(0, -HALF_SUFFIX.length) : family;
 }
 
 function filteredCandidates(): Candidate[] {
@@ -547,19 +523,8 @@ function makeButton(label: string, onClick: () => void, className = ""): HTMLBut
 
 function renderInstalledActions(c: Candidate) {
   actionsEl.textContent = "";
-  actionsEl.append(makeButton("Use in browser", () => onUseAs(c.kind === "mono" ? "mono" : "sans", c), "primary"));
-  actionsEl.append(makeButton("Use in Visual Studio Code", () => onUseInVscode(c)));
+  actionsEl.append(makeButton("Use in Visual Studio Code", () => onUseInVscode(c), "primary"));
   actionsEl.append(makeButton(c.built ? "Rebuild Half" : "Build Half", () => onBuild(c)));
-  const advanced = document.createElement("details");
-  const summary = document.createElement("summary");
-  summary.textContent = "Choose slot";
-  advanced.append(summary);
-  for (const kind of KINDS) {
-    const active = state.web?.[kind] === `${c.family}${HALF_SUFFIX}`;
-    const button = makeButton(`Use as ${kind}`, () => onUseAs(kind, c), active ? "active" : "");
-    advanced.append(button);
-  }
-  actionsEl.append(advanced);
 }
 
 async function renderInstalledDetail(c: Candidate) {
@@ -596,27 +561,6 @@ function refreshSelectedActions() {
   renderInstalledActions(state.selected.candidate);
 }
 
-async function onUseAs(kind: Kind, c: Candidate) {
-  if (busy()) return;
-  const result = await run(`Applying ${c.family} to browser…`, async () => {
-    await build(c);
-    const web = await webFonts(kind, c.family);
-    const fonts = await installed();
-    const connection = await browserStatus();
-    return { web, fonts, connection };
-  });
-  if (!result) return;
-  state.web = result.web;
-  state.candidates = result.fonts.candidates;
-  renderSlots();
-  renderList();
-  refreshSelectedActions();
-  showNote(`${c.family} Half saved for browser ${kind === "mono" ? "code" : "text"}.`);
-  showBrowserStatus(result.connection);
-  if (!result.connection.configured) await setupChrome();
-  scheduleBrowserCheck(0);
-}
-
 async function onUseInVscode(c: Candidate) {
   if (busy()) return;
   const result = await run(`Applying ${c.family} to Visual Studio Code…`, async () => {
@@ -638,8 +582,6 @@ async function onReset() {
   const result = await run("Resetting…", () => resetApi(resetDeleteFontsEl.checked));
   if (!result) return;
   closeResetPanel();
-  state.web = result.web;
-  renderSlots();
   await reloadInstalled();
   refreshSelectedActions();
   showNote(resetSummary(result));
@@ -663,9 +605,13 @@ let browserTimer: ReturnType<typeof setTimeout> | null = null;
 const BROWSER_POLL = 5000;
 const BROWSER_POLL_SETTLED = 15000;
 
+function pageFontCounts(status: Awaited<ReturnType<typeof browserStatus>>): string {
+  return `${status.converted} ${status.converted === 1 ? "face" : "faces"} converted, ${status.unchanged} unchanged`;
+}
+
 function showBrowserStatus(status: Awaited<ReturnType<typeof browserStatus>>) {
-  browserStatusEl.textContent = status.synced
-    ? "Chrome connected · font settings received"
+  browserStatusEl.textContent = !status.enabled ? "Chrome conversion off · run Chrome setup to turn it on"
+    : status.synced ? `Chrome connected · converting page fonts (${pageFontCounts(status)})`
     : status.connected ? "Chrome connected · applying…"
     : status.configured ? "Chrome disconnected · open Chrome or finish setup"
     : "Chrome setup needed";
@@ -891,30 +837,26 @@ function init() {
       event.preventDefault();
       moveSelection(-1);
     } else if (event.key === "Enter" && state.selected?.tab === "installed"
-      && !(event.target instanceof HTMLButtonElement)
-      && !(event.target instanceof HTMLElement && event.target.closest("details"))) {
+      && !(event.target instanceof HTMLButtonElement)) {
       event.preventDefault();
       void onBuild(state.selected.candidate);
     }
   });
 
   void (async () => {
-    const [installedResult, webResult, settingsResult] = await Promise.all([
+    const [installedResult, settingsResult] = await Promise.all([
       run("Loading fonts…", () => installed()),
-      run("Loading slots…", () => webFonts()),
       run("Loading settings…", () => settingsApi()),
     ]);
     if (installedResult) {
       state.candidates = installedResult.candidates;
       state.fontsDir = installedResult.fonts_dir;
     }
-    if (webResult) state.web = webResult;
     if (settingsResult) {
       state.settings = settingsResult.settings;
       state.defaults = settingsResult.defaults;
       renderKnobs(settingsResult.settings);
     }
-    renderSlots();
     renderFaceLabels();
     const first = state.candidates[0];
     state.selected = first ? { tab: "installed", candidate: first } : null;

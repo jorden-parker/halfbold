@@ -468,15 +468,6 @@ button.link:hover {
   color: #ffffff;
 }
 
-#slots span {
-  margin-left: 14px;
-}
-
-#slots b {
-  font-weight: 500;
-  color: var(--fg);
-}
-
 @media (prefers-reduced-motion: no-preference) {
   .sample {
     transition: opacity 120ms ease-out;
@@ -503,6 +494,4 @@ button.link:hover {
   border-radius: 6px;
   background: var(--control);
 }
-#actions details { font-size: 12px; }
-#actions summary { cursor: pointer; padding: 4px; }
 #browser-instructions { color: var(--muted); }

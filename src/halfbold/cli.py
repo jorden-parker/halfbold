@@ -5,19 +5,16 @@ from pathlib import Path
 
 from halfbold.brewcask import cask_font_dir
 from halfbold.build import (
-    STYLE_SUFFIX,
     bold_face_path,
     build_bold_face,
     build_halfbold_font,
 )
 from halfbold.desktop import launch_desktop
 from halfbold.preview import preview_candidates, preview_files
-from halfbold.scan import KINDS, build_all, find_installed_half_families
+from halfbold.scan import build_all
 from halfbold.settings import load_settings
-from halfbold.web import set_web_font
 
 DEFAULT_FONTS_DIR = Path.home() / "Library" / "Fonts"
-DEFAULT_CSS = Path(__file__).resolve().parents[2] / "chrome-extension" / "halfbold.css"
 COMMANDS = {
     "sync": ("--all",),
     "rebuild": ("--all", "--force"),
@@ -77,10 +74,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--fonts-dir",
         type=Path,
         default=DEFAULT_FONTS_DIR,
-        help=(
-            "Folder scanned by --all and checked by --sans/--serif/--mono "
-            f"(default: {DEFAULT_FONTS_DIR})"
-        ),
+        help=(f"Folder scanned by --all (default: {DEFAULT_FONTS_DIR})"),
     )
     parser.add_argument(
         "--force",
@@ -91,21 +85,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--dry-run",
         action="store_true",
         help="With --all, list what would be built without writing anything",
-    )
-    for kind in KINDS:
-        parser.add_argument(
-            f"--{kind}",
-            metavar="FAMILY",
-            help=f'Make FAMILY the extension\'s {kind} font ("Half" suffix optional)',
-        )
-    parser.add_argument(
-        "--css",
-        type=Path,
-        default=DEFAULT_CSS,
-        help=(
-            "Extension stylesheet edited by --sans/--serif/--mono "
-            f"(default: {DEFAULT_CSS})"
-        ),
     )
     settings = load_settings()
     parser.add_argument(
@@ -175,33 +154,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Download a Homebrew font cask without installing it and preview it",
     )
     args = parser.parse_args([*COMMANDS.get(command, ()), *argv])
-    args.web = {kind: getattr(args, kind) for kind in KINDS if getattr(args, kind)}
     if args.all and (args.regular is not None or args.output is not None):
         parser.error(
             "sync, rebuild, list and --all use --fonts-dir, not font files or -o"
         )
-    if args.web and (args.all or args.regular is not None):
-        parser.error(
-            "--sans/--serif/--mono cannot be combined with a font file or --all"
-        )
-    if args.preview and (args.all or args.web or args.regular is None):
+    if args.preview and (args.all or args.regular is None):
         parser.error("--preview takes a font file or folder and no other mode")
-    if args.preview_cask and (
-        args.all or args.web or args.preview or args.regular is not None
-    ):
+    if args.preview_cask and (args.all or args.preview or args.regular is not None):
         parser.error("--preview-cask takes a cask token and no other mode")
     if (args.png or args.wait) and not args.preview and not args.preview_cask:
         parser.error("--png and --wait need --preview")
     if (
-        not args.web
-        and not args.all
+        not args.all
         and not args.preview
         and not args.preview_cask
         and args.regular is None
     ):
-        parser.error(
-            "use sync, rebuild or list, give a font file, or use --sans/--serif/--mono"
-        )
+        parser.error("use sync, rebuild or list, or give a font file")
     return args
 
 
@@ -209,20 +178,6 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     if getattr(args, "desktop", False):
         return launch_desktop()
-    if args.web:
-        installed = find_installed_half_families(args.fonts_dir)
-        for kind, family in args.web.items():
-            if not family.endswith(f" {STYLE_SUFFIX}"):
-                family = f"{family} {STYLE_SUFFIX}"
-            if family not in installed:
-                names = ", ".join(sorted(installed)) or "none"
-                print(
-                    f"{family!r} is not installed in {args.fonts_dir}; "
-                    f"installed Half fonts: {names}"
-                )
-                return 1
-            print(set_web_font(args.css, kind, family))
-        return 0
     if args.preview:
         try:
             if args.regular.is_dir():

@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from conftest import make_font
 from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
 from fontTools.pens.boundsPen import BoundsPen
 from fontTools.ttLib import TTFont
@@ -116,6 +117,19 @@ def test_build_adds_bold_glyphs_and_calt(font_pair: tuple[Path, Path], tmp_path:
     features = {f.FeatureTag for f in font["GSUB"].table.FeatureList.FeatureRecord}
     assert "calt" in features
     assert font["name"].getBestFamilyName() == "Test Half"
+
+
+def test_build_pairs_bold_glyphs_by_character_not_glyph_name(tmp_path: Path):
+    regular = make_font(tmp_path / "Web-Regular.ttf", "Web", "Regular", 100)
+    bold = make_font(
+        tmp_path / "Web-Bold.ttf", "Web", "Bold", 200, glyph_prefix="glyph_"
+    )
+    out = tmp_path / "Web-Half.ttf"
+    letters = build_halfbold_font(regular, bold, out)
+
+    font = TTFont(out)
+    assert len(letters) == 52
+    assert font["hmtx"]["a" + BOLD_SUFFIX][0] == 300
 
 
 def test_build_drops_apple_shaping_tables_that_hide_calt(

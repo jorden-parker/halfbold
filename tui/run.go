@@ -48,14 +48,3 @@ func (r runner) previewCask(token string) tea.Cmd {
 		return previewDoneMsg{err: err}
 	})
 }
-
-func (r runner) webArgs(kind, family string) []string {
-	return []string{"run", "--project", r.project, "halfbold", "--" + kind, family}
-}
-
-func (r runner) setWeb(kind, family string) tea.Cmd {
-	return func() tea.Msg {
-		output, err := exec.Command("uv", r.webArgs(kind, family)...).CombinedOutput()
-		return runDoneMsg{output: string(output), err: err}
-	}
-}

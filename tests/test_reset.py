@@ -1,26 +1,22 @@
 import json
 from pathlib import Path
 
-from test_web import CSS
-
 from halfbold.reset import (
     VSCODE,
-    WEB,
     load_originals,
     remember,
     restore_originals,
     vscode_values,
 )
-from halfbold.web import get_web_fonts, set_web_font
 
 
 def test_remember_keeps_the_first_values(tmp_path: Path):
     path = tmp_path / "halfbold" / "originals.json"
 
-    remember(path, WEB, {"sans": "First Half"})
-    remember(path, WEB, {"sans": "Second Half"})
+    remember(path, VSCODE, {"editor.fontFamily": "Menlo"})
+    remember(path, VSCODE, {"editor.fontFamily": "Pair Half"})
 
-    assert load_originals(path) == {WEB: {"sans": "First Half"}}
+    assert load_originals(path) == {VSCODE: {"editor.fontFamily": "Menlo"}}
 
 
 def test_vscode_values_reports_missing_keys_as_none(tmp_path: Path):
@@ -33,26 +29,21 @@ def test_vscode_values_reports_missing_keys_as_none(tmp_path: Path):
     }
 
 
-def test_restore_puts_back_vscode_and_slots(tmp_path: Path):
+def test_restore_puts_back_vscode(tmp_path: Path):
     path = tmp_path / "originals.json"
-    css = tmp_path / "halfbold.css"
-    css.write_text(CSS)
     settings = tmp_path / "settings.json"
     settings.write_text(
         '{\n    "editor.fontFamily": "Menlo",\n    "editor.tabSize": 2\n}\n'
     )
-    remember(path, WEB, get_web_fonts(css))
     remember(path, VSCODE, vscode_values(settings))
-    set_web_font(css, "sans", "Pair Half")
     settings.write_text(
         '{\n    "editor.fontFamily": "\'Pair Half\', monospace",\n'
         '    "editor.tabSize": 2,\n    "editor.fontLigatures": true\n}\n'
     )
 
-    restored = restore_originals(path, css, settings)
+    restored = restore_originals(path, settings)
 
-    assert restored == [VSCODE, WEB]
-    assert css.read_text() == CSS
+    assert restored == [VSCODE]
     assert json.loads(settings.read_text()) == {
         "editor.fontFamily": "Menlo",
         "editor.tabSize": 2,
@@ -60,11 +51,17 @@ def test_restore_puts_back_vscode_and_slots(tmp_path: Path):
     assert not path.exists()
 
 
-def test_restore_without_originals_changes_nothing(tmp_path: Path):
-    css = tmp_path / "halfbold.css"
-    css.write_text(CSS)
+def test_restore_ignores_slots_recorded_by_older_versions(tmp_path: Path):
+    path = tmp_path / "originals.json"
+    path.write_text(json.dumps({"web": {"sans": "Inter Half"}}))
 
-    restored = restore_originals(tmp_path / "originals.json", css, tmp_path / "s.json")
+    restored = restore_originals(path, tmp_path / "s.json")
+
+    assert restored == ["web"]
+    assert not path.exists()
+
+
+def test_restore_without_originals_changes_nothing(tmp_path: Path):
+    restored = restore_originals(tmp_path / "originals.json", tmp_path / "s.json")
 
     assert restored == []
-    assert css.read_text() == CSS

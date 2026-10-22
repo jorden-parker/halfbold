@@ -9,10 +9,8 @@ from halfbold.vscode import (
     remove_setting,
     set_setting,
 )
-from halfbold.web import set_web_font
 
 VSCODE = "vscode"
-WEB = "web"
 
 
 def default_originals_path() -> Path:
@@ -50,16 +48,9 @@ def restore_vscode(settings_path: Path, values: dict) -> None:
     settings_path.write_text(text)
 
 
-def restore_web(css_path: Path, values: dict) -> None:
-    for kind, family in values.items():
-        set_web_font(css_path, kind, family)
-
-
-def restore_originals(path: Path, css_path: Path, settings_path: Path) -> list[str]:
+def restore_originals(path: Path, settings_path: Path) -> list[str]:
     originals = load_originals(path)
     if VSCODE in originals:
         restore_vscode(settings_path, originals[VSCODE])
-    if WEB in originals:
-        restore_web(css_path, originals[WEB])
     path.unlink(missing_ok=True)
     return sorted(originals)

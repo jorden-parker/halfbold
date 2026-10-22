@@ -1,6 +1,18 @@
 # Plan 017: Make “Set up Chrome” convert each page's own fonts
 
-Status: TODO
+Status: DONE (2026-10-22, simpler design)
+
+## Outcome (2026-10-22)
+
+Built with a smaller design than the one below:
+- **Shadow faces instead of rewriting the DOM.** The content script adds a `FontFace` under the page's own family name and descriptors, built from the converted bytes. Chrome prefers it over the page's `@font-face` face with the same descriptors, and it hides an installed font of the same name.
+- **No chunked transport back to Chrome.** The native host writes converted files into the unpacked extension's `fonts/` folder, and pages fetch them as web-accessible resources.
+- **Slots removed entirely**, from the app, CLI, API and TUI.
+- **Generic families** get installed Half fonts through `chrome.fontSettings`.
+
+Spike in Chrome on 2026-10-22: a later adopted-sheet `@font-face` and a later `document.fonts.add(FontFace(bytes))` both overrode the page's webfont face ("Probe": Arial width 302 → Impact width 283) and shadowed the installed Georgia. Removing either one reverted the page. Live check in the maintainer's Chrome on a local fixture: the WOFF2 webfont pair and Georgia rendered half-bold, the page's bold face stayed ordinary bold, and the app reported 3 faces converted.
+
+Not done from the original contract: `system-ui` and `-apple-system`, fonts registered only through JavaScript `FontFace`, and the opt-in Playwright acceptance harness.
 
 Planned at `783e51f`, 2026-10-06. Priority P1. Effort L. Risk HIGH (font discovery and browser rendering). Depends on the existing browser setup and native messaging implementation, already present at this commit.
 

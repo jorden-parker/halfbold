@@ -163,21 +163,30 @@ def require_truetype_outlines(font: TTFont, path: Path) -> None:
 
 
 def word_letter_glyphs(regular: TTFont, bold: TTFont) -> Letters:
-    regular_cmap = regular.getBestCmap()
-    bold_glyphs = set(bold.getGlyphOrder())
+    counterparts = bold_counterparts(regular, bold)
     lower: list[str] = []
     upper: list[str] = []
     seen: set[str] = set()
-    for codepoint, name in sorted(regular_cmap.items()):
+    for codepoint, name in sorted(regular.getBestCmap().items()):
         char = chr(codepoint)
-        if not char.isalpha() or name not in bold_glyphs or name in seen:
+        if not char.isalpha() or name not in counterparts or name in seen:
             continue
         seen.add(name)
         (upper if char.isupper() else lower).append(name)
     return Letters(lower, upper)
 
 
+def bold_counterparts(regular: TTFont, bold: TTFont) -> dict[str, str]:
+    bold_cmap = bold.getBestCmap()
+    counterparts: dict[str, str] = {}
+    for codepoint, name in sorted(regular.getBestCmap().items()):
+        if codepoint in bold_cmap:
+            counterparts.setdefault(name, bold_cmap[codepoint])
+    return counterparts
+
+
 def copy_bold_glyphs(regular: TTFont, bold: TTFont, letters: list[str]) -> None:
+    counterparts = bold_counterparts(regular, bold)
     bold_glyph_set = bold.getGlyphSet()
     glyf = regular["glyf"]
     hmtx = regular["hmtx"]
@@ -186,15 +195,16 @@ def copy_bold_glyphs(regular: TTFont, bold: TTFont, letters: list[str]) -> None:
     regular.setGlyphOrder(new_order)
     glyf.glyphOrder = new_order
     for name in letters:
+        bold_name = counterparts[name]
         new_name = name + BOLD_SUFFIX
         pen = DecomposingRecordingPen(bold_glyph_set)
-        bold_glyph_set[name].draw(pen)
+        bold_glyph_set[bold_name].draw(pen)
         tt_pen = TTGlyphPen(None)
         pen.replay(tt_pen)
         glyph = tt_pen.glyph()
         glyph.recalcBounds(glyf)
         glyf[new_name] = glyph
-        hmtx[new_name] = bold_hmtx[name]
+        hmtx[new_name] = bold_hmtx[bold_name]
 
 
 def bold_prefix_length(word_length: int, bold_share: float = BOLD_SHARE) -> int:

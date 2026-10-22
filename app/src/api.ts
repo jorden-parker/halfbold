@@ -1,7 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
 export type Kind = "sans" | "serif" | "mono";
-export const KINDS: Kind[] = ["sans", "serif", "mono"];
 
 export interface Face {
   path: string;
@@ -42,8 +41,6 @@ export interface Settings {
 
 type Preview = Candidate & { half: string; settings: Settings };
 
-export type WebFonts = Record<Kind, string>;
-
 async function api<T>(...args: string[]): Promise<T> {
   return invoke<T>("api", { args });
 }
@@ -83,10 +80,6 @@ export function caskInstall(token: string) {
   return api<{ token: string; candidates: Candidate[] }>("cask-install", token);
 }
 
-export function webFonts(kind?: Kind, family?: string) {
-  return kind && family ? api<WebFonts>("web", kind, family) : api<WebFonts>("web");
-}
-
 export function setVscodeFont(family: string) {
   return api<{ settings: string; font_family: string }>("vscode", family);
 }
@@ -95,7 +88,7 @@ export interface ResetResult {
   restored: string[];
   deleted: string[];
   watcher_removed: boolean;
-  web: WebFonts;
+  chrome_disabled: boolean;
 }
 
 export function reset(deleteFonts: boolean) {
@@ -122,6 +115,9 @@ interface BrowserStatus {
   configured: boolean;
   connected: boolean;
   synced: boolean;
+  enabled: boolean;
+  converted: number;
+  unchanged: number;
   extension_dir: string;
 }
 

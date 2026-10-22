@@ -7,9 +7,8 @@ import pytest
 from conftest import make_collection, make_font
 from fontTools.ttLib import TTFont
 from test_scan import fill_fonts_dir
-from test_web import CSS
 
-from halfbold import api
+from halfbold import api, browser
 from halfbold.api import main
 from halfbold.brewcask import CaskInfo
 from halfbold.scan import build_all, candidates_from_paths
@@ -20,6 +19,7 @@ from halfbold.settings import Settings
 def isolated_reset_paths(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(api, "ORIGINALS_PATH", tmp_path / "originals.json")
     monkeypatch.setattr(api, "WATCHER_PLIST", tmp_path / "watcher.plist")
+    monkeypatch.setattr(browser, "support_dir", lambda: tmp_path / "browser")
 
 
 def test_installed_lists_candidates_with_flags(tmp_path: Path, capsys):
@@ -249,28 +249,6 @@ def test_cask_install_returns_installed_candidates(monkeypatch, tmp_path: Path, 
     assert len(payload["candidates"]) == 1
     assert payload["candidates"][0]["family"] == "Test"
     assert calls == ["font-test"]
-
-
-def test_web_sets_slot_and_reads_back(tmp_path: Path, capsys):
-    fonts = tmp_path / "fonts"
-    fill_fonts_dir(fonts)
-    build_all(fonts)
-    css = tmp_path / "halfbold.css"
-    css.write_text(CSS)
-
-    result = main(
-        ["web", "serif", "Pair", "--css", str(css), "--fonts-dir", str(fonts)]
-    )
-    assert result == 0
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["serif"] == "Pair Half"
-
-    result = main(
-        ["web", "serif", "Nope", "--css", str(css), "--fonts-dir", str(fonts)]
-    )
-    assert result == 1
-    payload = json.loads(capsys.readouterr().out)
-    assert "Nope Half" in payload["error"]
 
 
 def test_casks_returns_names_from_index(monkeypatch, capsys):
@@ -737,23 +715,21 @@ def test_reset_restores_slots_and_vscode(tmp_path: Path, capsys):
     fonts = tmp_path / "fonts"
     fill_fonts_dir(fonts)
     build_all(fonts)
-    css = tmp_path / "halfbold.css"
-    css.write_text(CSS)
     vscode_dir = tmp_path / "Code" / "User"
     vscode_dir.mkdir(parents=True)
     settings = vscode_dir / "settings.json"
     settings.write_text('{"editor.fontFamily": "Menlo"}')
     common = ["--fonts-dir", str(fonts)]
-    main(["web", "sans", "Pair", "--css", str(css), *common])
     main(["vscode", "Pair", "--settings", str(settings), *common])
     capsys.readouterr()
 
-    result = main(["reset", "--css", str(css), "--settings", str(settings), *common])
+    result = main(["reset", "--settings", str(settings), *common])
 
     assert result == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["restored"] == ["vscode", "web"]
-    assert payload["web"]["sans"] == "Inter Half"
+    assert payload["restored"] == ["vscode"]
+    assert payload["chrome_disabled"] is True
+    assert not browser.read_enabled()
     assert payload["deleted"] == []
     assert json.loads(settings.read_text()) == {"editor.fontFamily": "Menlo"}
     assert list(fonts.glob("*-Half.ttf")) != []
@@ -765,8 +741,6 @@ def test_reset_delete_fonts_removes_watcher_then_half_fonts(
     fonts = tmp_path / "fonts"
     fill_fonts_dir(fonts)
     build_all(fonts)
-    css = tmp_path / "halfbold.css"
-    css.write_text(CSS)
     events = []
 
     def fake_remove_watcher(plist: Path) -> bool:
@@ -779,8 +753,6 @@ def test_reset_delete_fonts_removes_watcher_then_half_fonts(
         [
             "reset",
             "--delete-fonts",
-            "--css",
-            str(css),
             "--settings",
             str(tmp_path / "settings.json"),
             "--fonts-dir",

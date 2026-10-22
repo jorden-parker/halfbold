@@ -35,12 +35,12 @@ _Avoid_: brew font, formula
 **Google Fonts cask**:
 A Cask whose files live in the google/fonts repository, so single faces can be fetched directly without the cask archive.
 
-**Slot**:
-One of the Chrome extension's three roles, sans, serif or mono, each pointing at one installed Half font family.
-_Avoid_: kind (that is the classification of a Candidate), active font
+**Shadow face**:
+A font face the Chrome extension adds to a page under the page's own family name and descriptors, loaded from a converted Half file (or `local()` for an installed face kept as it is), so it is picked instead of the original.
+_Avoid_: override, replacement font, slot
 
 **Originals**:
-The Visual Studio Code font settings and Slot values recorded the first time the app changes them, so Reset can put them back.
+The Visual Studio Code font settings recorded the first time the app changes them, so Reset can put them back.
 _Avoid_: backup, snapshot
 
 **Kind**:

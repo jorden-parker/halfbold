@@ -229,9 +229,7 @@ def face_paths(path: Path) -> list[Path]:
     return [path]
 
 
-def find_installed_candidates(
-    fonts_dir: Path, settings: Settings | None = None
-) -> list[Candidate]:
+def installed_face_paths(fonts_dir: Path) -> list[Path]:
     roots = [fonts_dir]
     if fonts_dir == Path.home() / "Library/Fonts":
         roots.extend(installed_font_dirs())
@@ -244,10 +242,18 @@ def find_installed_candidates(
         and path.is_file()
         for face in face_paths(path)
     )
+    return list(paths)
+
+
+def find_installed_candidates(
+    fonts_dir: Path, settings: Settings | None = None
+) -> list[Candidate]:
     return sorted(
         (
             replace(candidate, output_dir=fonts_dir)
-            for candidate in candidates_from_paths(list(paths), settings)
+            for candidate in candidates_from_paths(
+                installed_face_paths(fonts_dir), settings
+            )
         ),
         key=lambda candidate: candidate.family.casefold(),
     )

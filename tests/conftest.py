@@ -38,9 +38,11 @@ def make_font(
     stem: int,
     features: str = "",
     weight: int = 400,
+    glyph_prefix: str = "",
 ) -> Path:
-    names = [".notdef", "space", *LETTERS]
-    cmap = {ord(" "): "space", **{ord(c): c for c in LETTERS}}
+    letter_names = [glyph_prefix + c for c in LETTERS]
+    names = [".notdef", "space", *letter_names]
+    cmap = {ord(" "): "space", **{ord(c): glyph_prefix + c for c in LETTERS}}
     if features:
         names += ["hyphen", "greater", "arrow", "f_i"]
         cmap |= {ord("-"): "hyphen", ord(">"): "greater"}
@@ -51,7 +53,13 @@ def make_font(
     builder.setupHorizontalMetrics({n: (stem + 100, 0) for n in names})
     builder.setupHorizontalHeader(ascent=800, descent=-200)
     builder.setupNameTable(
-        {"familyName": family, "styleName": style, "typographicSubfamily": style}
+        {
+            "familyName": family,
+            "styleName": style,
+            "typographicSubfamily": style,
+            "fullName": f"{family} {style}",
+            "psName": f"{family}-{style}",
+        }
     )
     builder.setupOS2(usWeightClass=weight)
     builder.setupPost()

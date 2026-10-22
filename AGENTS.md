@@ -17,6 +17,7 @@ Personal Python CLI. Takes two weights of the same TrueType family and writes on
 
 - `scripts/install-watcher.sh` installs a launchd user agent (`com.jorden.halfbold`) with `WatchPaths` on `~/Library/Fonts`. Every change there runs `halfbold sync`. Its own output lands in the same folder, which re-triggers one more run that reports everything up to date; that is expected. The app's Reset with **Also delete every Half font** boots the watcher out and deletes its plist before deleting the fonts.
 - `chrome-extension/install.sh` registers the native messaging host, copies the extension to Application Support, and opens `chrome://extensions` via AppleScript (macOS `open` silently drops `chrome://` URLs) for the one manual Load unpacked step.
+- The Chrome extension keeps each page's own fonts. The content script finds the families a page uses and the `@font-face` rules behind them. The service worker fetches the font bytes and sends them to the native host (`python -m halfbold.browser`). `chrome_fonts.py` builds Half files into the extension's `fonts/` folder, and the page loads them as Shadow faces under the original family names. Installed families also get `local()` faces for their other styles, and Chrome's generic defaults get installed Half fonts through `chrome.fontSettings`. Reset writes `config.json` with `enabled: false`, which clears both.
 
 ## Conventions
 

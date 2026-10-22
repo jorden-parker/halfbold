@@ -30,7 +30,7 @@
           <p>In Chrome, turn on <b>Developer mode</b>, then click <b>Load unpacked</b>.</p>
           <p>Press <b>Cmd+Shift+G</b>, paste the copied folder path, then select it.</p>
           <p id="extension-path"></p>
-          <p>Replacing an older halfbold extension? Remove the old entry first. Chrome’s own pages cannot use custom fonts.</p>
+          <p>Already loaded halfbold? Click the reload button on its card instead. Pages keep their own fonts, each swapped for its Half version; Chrome’s own pages cannot use custom fonts.</p>
         </div>
       </section>
       <section id="detail">
@@ -94,7 +94,7 @@
         </div>
       </section>
       <section id="reset-panel" aria-label="Reset" hidden>
-        <p>Put Visual Studio Code and the Chrome slots back the way they were before halfbold changed them?</p>
+        <p>Put Visual Studio Code back the way it was before halfbold changed it, and turn off Chrome's page font conversion?</p>
         <label class="reset-option">
           <input id="reset-delete-fonts" type="checkbox" />
           Also delete every Half font in ~/Library/Fonts and remove the file watcher
@@ -107,7 +107,6 @@
       <footer id="statusbar">
         <span id="status"></span>
         <span class="statusbar-end">
-          <span id="slots"></span>
           <button id="reset-open" class="link" type="button">Reset…</button>
         </span>
       </footer>

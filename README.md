@@ -44,20 +44,11 @@ go run -C tui . -project ..
 
 `-fonts DIR` (repeatable) scans other directories; `-out-dir DIR` writes the `-Half.ttf` somewhere other than next to the source font.
 
-Each row shows the font's kind (`sans`, `serif`, `mono`). Press `s` on a row to make its Half font the Chrome extension's font for that kind (`1`/`2`/`3` pick a different slot); this runs `halfbold --sans/--serif/--mono` and the connected extension updates open pages immediately.
+Each row shows the font's kind (`sans`, `serif`, `mono`).
 
 Press `p` to preview the highlighted font: the sample paragraph is drawn into the terminal half-bold and plain (see the `--preview` section below for terminal requirements); enter brings the picker back. In the Homebrew list, `p` previews the cask before installing it (Google Fonts casks fetch only the needed files; other casks are downloaded to Homebrew's cache with `brew fetch`).
 
 Press `i` to install a font from a Homebrew cask (`brew search --cask font-`) without leaving the picker. After `brew install --cask` finishes, the new font is converted straight away; when a cask ships several families you pick one first.
-
-Point the Chrome extension at a different Half font. Each web page slot
-(`sans`, `serif`, `mono`) maps to one installed Half family; the connected extension
-updates open pages immediately:
-
-```sh
-uv run halfbold list                            # shows each family's kind
-uv run halfbold --sans "Inter" --mono "JetBrainsMono Nerd Font"
-```
 
 Preview how a font will look half-bold without converting it. The sample
 is drawn as an image straight into the terminal (kitty graphics protocol —
@@ -121,12 +112,14 @@ Install the output, then turn on contextual alternates (`calt`) in the app. Most
 
 ## App
 
-For browser fonts, select a font and click **Use in browser**. It builds and
-installs the Half font, then applies it to browser text (or code for monospace).
-First use guides you through loading the Chrome extension. The connection status
-confirms when Chrome receives your settings; later font switches update open
-pages without refreshing. **Choose slot** exposes the individual slots.
-See [browser setup](chrome-extension/README.md) for upgrades and troubleshooting.
+For Chrome, click **Set up Chrome**. No font needs to be selected. Every
+website then keeps its own fonts, each swapped for its Half version: the
+webfonts the site downloads, the installed fonts it names, and Chrome's
+default fonts. The first setup walks you through loading the Chrome
+extension. The connection status counts the faces converted on open pages,
+and settings changes reconvert them without refreshing. See
+[browser setup](chrome-extension/README.md) for what is converted and what
+is left alone.
 
 For Visual Studio Code, select a font and click **Use in Visual Studio Code**.
 It builds and installs the Half font, sets it as `editor.fontFamily` in your
@@ -134,8 +127,9 @@ user `settings.json`, and turns on `editor.fontLigatures` so `calt` runs.
 Comments and other settings in the file are kept. Reload open VS Code windows
 to pick up a newly installed font.
 
-**Reset…** in the status bar puts Visual Studio Code's font settings and
-the Chrome slots back to how they were before the app first changed them.
+**Reset…** in the status bar puts Visual Studio Code's font settings back
+to how they were before the app first changed them, and turns off Chrome's
+page font conversion (run **Set up Chrome** to turn it back on).
 Tick **Also delete every Half font** to also stop and remove the file
 watcher and delete every Half font in `~/Library/Fonts`. Re-run
 `scripts/install-watcher.sh` to get the watcher back.
@@ -143,8 +137,8 @@ watcher and delete every Half font in `~/Library/Fonts`. Re-run
 
 A small Tauri window that lists every convertible font, previews the real
 half-bold result next to the plain font, builds the Half twin, installs
-Homebrew font casks, and points the Chrome extension's sans/serif/mono slots
-at a family. It drives `halfbold-api` under the hood, so the Python package
+Homebrew font casks, and sets up the Chrome extension that converts each
+page's own fonts. It drives `halfbold-api` under the hood, so the Python package
 stays the only place with font logic. Homebrew casks are listed by font name
 (from the Homebrew formulae index, cached for a day) and Google Fonts casks
 are drawn in their own face; other casks pick up their face after a preview

@@ -1,26 +1,22 @@
 # halfbold Chrome extension
 
-Applies locally installed Half fonts to websites, with live updates to open tabs.
+Keeps every website's own fonts and swaps each one for its Half version: the
+webfonts a site downloads, the installed fonts it names, and Chrome's default
+fonts for `sans-serif`, `serif`, `monospace` and unstyled text.
 
 ## Desktop setup
 
-Open the desktop app, select a font, and click **Use in browser**. The app builds
-and installs its Half font and uses it for text (or code for monospace fonts).
-**Choose slot** exposes the individual sans, serif and mono slots.
-
-On first use, the app opens Chrome and copies the extension folder path:
+Open the desktop app and click **Set up Chrome**. No font needs to be selected.
+The app opens Chrome and copies the extension folder path:
 
 1. Enable **Developer mode** in `chrome://extensions` and click **Load unpacked**.
 2. Press **Cmd+Shift+G**, paste, and select the folder.
 
-The app shows **Chrome connected · font settings received** after Chrome
-acknowledges the current settings. Font switches then update open pages without
-refreshing. Chrome's own pages, the Chrome Web Store and other protected pages
-cannot be styled. Closed shadow roots are inaccessible.
+If halfbold is already loaded, click the reload button on its card instead.
 
-If upgrading from the older extension, remove the old halfbold entry before
-loading this version. The extension now has a stable ID and lives in
-`~/Library/Application Support/halfbold/browser/extension`.
+The app shows **Chrome connected · converting page fonts (N faces converted,
+M unchanged)** once Chrome has the current settings. Changing a setting in the
+app (bold share, weights, …) reconverts open pages without refreshing.
 
 ## Command-line setup
 
@@ -28,29 +24,57 @@ loading this version. The extension now has a stable ID and lives in
 ./chrome-extension/install.sh
 ```
 
-This performs the same setup. Existing commands such as
-`uv run halfbold --sans "Inter"` also deliver live updates.
+## How a page is converted
+
+A Shadow face is a `FontFace` the extension adds to the page under the page's
+own family name, built from the converted file. It is added after the page's
+own `@font-face` rules, so for the same weight and style Chrome picks it
+instead, and it hides an installed font of the same name. No element's
+`font-family` is touched, so fallback order, weights, frames and dynamic
+content keep working. Turning conversion off deletes the Shadow faces.
+
+- **Webfonts**: the content script reads each `@font-face` rule, including
+  cross-origin sheets, which the service worker fetches. For each family the
+  page uses, the worker downloads the WOFF2/WOFF/TTF files and the native host
+  builds a Half font from the face nearest the plain weight and the face
+  nearest the bold weight (or one variable face). Only the plain face is
+  shadowed; the page's own bold stays as it is.
+- **Installed fonts**: the host builds the Half face and the Half Bold face
+  from the installed family. Every other installed face of that family
+  (Light, Italic, …) is re-added with `local()`, because shadowing hides them all.
+- **Chrome's defaults**: the host installs Half versions of Chrome's default
+  families into `~/Library/Fonts`, and the extension sets them through
+  `chrome.fontSettings`. Reset clears them again.
+
+Converted files live in `~/Library/Application Support/halfbold/browser/extension/fonts`,
+keyed by source bytes and settings, so a font is converted once.
+
+Unchanged, by design or limitation: CFF/OpenType-outline fonts, icon fonts
+(mostly Private Use Area characters, or names like *Icons*, *Symbols*,
+*Awesome*), families with only one weight, fonts added only through the
+JavaScript `FontFace` API, `system-ui` and `-apple-system` (macOS's private
+system font), canvas text, Chrome's own pages and protected pages, and closed
+shadow roots.
 
 ## Connection
 
-Setup registers `com.jorden.halfbold` as a Chrome native messaging host for this
-extension only. Chrome starts a small Python process that watches the source CSS
-and pushes changes within 150 ms of detecting them. The extension caches the
-latest stylesheet, updates open tabs and frames, and updates adopted stylesheets
-in open shadow roots. No local HTTP server is needed. Chrome owns the connection,
-so the desktop app can be closed while browsing.
+Setup registers `com.jorden.halfbold` as a Chrome native messaging host for
+this extension only. Chrome starts `python -m halfbold.browser` from this
+checkout's environment. The host sends the current configuration (on/off
+plus a hash of the Settings) whenever either changes. It converts fonts on
+two worker threads, so heartbeats keep flowing, and it gives up on a font
+after 60 seconds. Chrome owns the connection, so the desktop app can be
+closed while browsing.
 
-Connection status expires after six seconds without a heartbeat. It confirms
-receipt of settings by the extension, not that every website permits styling.
-The helper uses this checkout's Python interpreter and CSS path. After moving the
-checkout or replacing its environment, run **Chrome setup** again.
+Connection status expires after six seconds without a heartbeat. After moving
+the checkout or replacing its environment, run **Chrome setup** again.
 
 ## Extension development
 
 Run setup again to copy extension code changes to the installed folder, then
-click **Reload** on the extension in Chrome. Font choices update live; JavaScript
-and manifest edits require an extension reload. With a checkout loaded directly,
-register the host through setup and reload that extension instead.
+click **Reload** on the extension in Chrome. Run `bun test chrome-extension`
+for the parsing helpers in `pagefonts-core.js`.
 
-Some sites set `text-rendering: optimizeSpeed`, which skips contextual alternates.
-The stylesheet forces `optimizeLegibility` and `calt` to preserve half-bold text.
+Some sites set `text-rendering: optimizeSpeed` or turn off contextual
+alternates. The extension forces `optimizeLegibility` and `calt` so half-bold
+text still renders.
