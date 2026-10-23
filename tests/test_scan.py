@@ -4,10 +4,12 @@ import shutil
 import struct
 from pathlib import Path
 
+import pytest
 from conftest import make_collection, make_font, make_variable_font
 from fontTools.ttLib import TTFont
 from fontTools.ttLib.sfnt import TTC_V1
 
+from halfbold import scan
 from halfbold.cli import main
 from halfbold.collection import collection_members
 from halfbold.scan import (
@@ -407,3 +409,37 @@ def test_build_all_refuses_a_symlink_where_the_output_goes(tmp_path: Path):
         "it is a symbolic link"
     ]
     assert outside.read_bytes() == b"keep"
+
+
+def test_build_all_builds_a_family_whose_name_is_longer_than_a_file_name(
+    tmp_path: Path,
+):
+    fonts = tmp_path / "fonts"
+    fonts.mkdir()
+    family = "L" * 300
+    make_font(fonts / "Long-Regular.ttf", family, "Regular", 100)
+    make_font(fonts / "Long-Bold.ttf", family, "Bold", 200)
+
+    report = build_all(fonts)
+
+    assert report[0].startswith("built")
+
+
+def test_build_all_reports_a_font_that_recurses_and_keeps_going(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    fonts = tmp_path / "fonts"
+    fill_fonts_dir(fonts)
+    real_build = scan.build_halfbold_font
+
+    def recurse_on_pair(regular, bold, output, settings):
+        if regular.name.startswith("Pair"):
+            raise RecursionError("maximum recursion depth exceeded")
+        return real_build(regular, bold, output, settings)
+
+    monkeypatch.setattr(scan, "build_halfbold_font", recurse_on_pair)
+
+    report = build_all(fonts)
+
+    assert any(line.startswith("skipped") and "Pair" in line for line in report)
+    assert any(line.startswith("built") and "Var" in line for line in report)

@@ -10,6 +10,7 @@ from halfbold.build import (
     build_halfbold_font,
 )
 from halfbold.desktop import launch_desktop
+from halfbold.output_paths import contained_file
 from halfbold.preview import preview_candidates, preview_files
 from halfbold.scan import build_all
 from halfbold.settings import load_settings
@@ -223,6 +224,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     output = args.output or args.regular.with_name(f"{args.regular.stem}-Half.ttf")
     letters = build_halfbold_font(args.regular, args.bold, output, settings)
-    build_bold_face(args.regular, args.bold, bold_face_path(output), settings)
+    bold_output = bold_face_path(output)
+    build_bold_face(
+        args.regular,
+        args.bold,
+        contained_file(bold_output.parent, bold_output.name),
+        settings,
+    )
     print(f"wrote {output} ({len(letters)} letter glyphs bolded)")
     return 0

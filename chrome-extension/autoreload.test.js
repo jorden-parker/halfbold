@@ -41,12 +41,13 @@ function createEnvironment() {
     hostRequests: [],
     fetchedUrls: [],
     hostListener: null,
+    hostFaces: [{ file: "f.ttf" }],
     messageListener: null,
   };
   const port = {
     postMessage(message) {
       env.hostRequests.push(message);
-      queueMicrotask(() => env.hostListener({ id: message.id, type: "converted", faces: [{ file: "f.ttf" }], unchanged: [] }));
+      queueMicrotask(() => env.hostListener({ id: message.id, type: "converted", faces: env.hostFaces, unchanged: [] }));
     },
     onMessage: { addListener: (listener) => (env.hostListener = listener) },
     onDisconnect: { addListener() {} },
@@ -205,6 +206,14 @@ describe("service worker font handling", () => {
 
     expect(reply.type).toBe("converted");
     expect(await send(env, { type: "halfbold-stored-webfont", faces: [declared] }, HTTPS_PAGE)).toEqual(reply);
+  });
+
+  test("does not persist a conversion that produced no faces", async () => {
+    env.hostFaces = [];
+
+    await send(env, { type: "halfbold-convert-installed", family: "Not Installed" }, HTTPS_PAGE);
+
+    expect(Object.keys(env.storage)).toEqual([]);
   });
 
   test("answers unchanged for a message that carries no faces array", async () => {

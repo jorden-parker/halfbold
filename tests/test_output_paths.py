@@ -40,3 +40,8 @@ def test_contained_file_refuses_a_symlink_at_the_target(tmp_path: Path):
 
     with pytest.raises(ValueError):
         contained_file(folder, "Pair-Half.ttf")
+
+
+def test_file_stem_stays_within_the_file_name_budget():
+    assert len(file_stem("x" * 400).encode()) <= 100
+    assert len(file_stem("é" * 400).encode()) <= 100

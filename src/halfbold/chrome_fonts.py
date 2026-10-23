@@ -27,6 +27,8 @@ from halfbold.scan import (
 from halfbold.settings import Settings
 
 SERVED_FONT_VERSION = 1
+SERVED_FONTS_QUOTA_BYTES = 512 * 1024 * 1024
+MAX_FAMILY_NAME_LENGTH = 200
 PRIVATE_USE_AREA = range(0xE000, 0xF900)
 VARIABLE_SUFFIX = " Variable"
 
@@ -170,6 +172,19 @@ def resident_bytes(pid: int) -> int:
     return int(digits) * KIBIBYTE if digits.isdigit() else 0
 
 
+def prune_served_fonts(fonts_dir: Path) -> None:
+    fonts = sorted(
+        (path for path in fonts_dir.glob("*.ttf")),
+        key=lambda path: path.stat().st_mtime,
+    )
+    total = sum(path.stat().st_size for path in fonts)
+    for path in fonts[:-1]:
+        if total <= SERVED_FONTS_QUOTA_BYTES:
+            break
+        total -= path.stat().st_size
+        path.unlink()
+
+
 def served_half(
     key: str, fonts_dir: Path, plain: Path, bold: Path | None, settings: Settings
 ) -> str:
@@ -180,6 +195,7 @@ def served_half(
         partial = output.with_suffix(".part")
         build_halfbold_font(plain, bold, partial, settings)
         partial.replace(output)
+        prune_served_fonts(fonts_dir)
     return name
 
 
@@ -193,6 +209,7 @@ def served_bold(
         partial = output.with_suffix(".part")
         build_bold_face(plain, bold, partial, settings)
         partial.replace(output)
+        prune_served_fonts(fonts_dir)
     return name
 
 
@@ -333,6 +350,8 @@ def convert_installed_family(
     settings: Settings,
     secret: bytes,
 ) -> Conversion:
+    if len(family) > MAX_FAMILY_NAME_LENGTH:
+        return Conversion(unchanged=["family name too long"])
     members = family_members(family, face_paths)
     if not members:
         return Conversion(unchanged=[f"{family}: not installed"])

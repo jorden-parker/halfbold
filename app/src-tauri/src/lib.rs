@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
 
+const MAX_FONT_BYTES: u64 = 64 * 1024 * 1024;
 const HOMEBREW_BIN_DIRS: [&str; 2] = ["/opt/homebrew/bin", "/usr/local/bin"];
 
 fn tool_path(name: &str) -> PathBuf {
@@ -180,8 +181,17 @@ async fn read_font(path: String) -> Result<tauri::ipc::Response, String> {
     if !is_under_roots(Path::new(&path), &font_roots()) {
         return Err(format!("{path} is outside the font folders"));
     }
-    let bytes = std::fs::read(&path).map_err(|err| format!("{path}: {err}"))?;
+    let bytes = read_within_limit(Path::new(&path), MAX_FONT_BYTES)?;
     Ok(tauri::ipc::Response::new(bytes))
+}
+
+fn read_within_limit(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
+    let describe = |err: std::io::Error| format!("{}: {err}", path.display());
+    let size = std::fs::metadata(path).map_err(describe)?.len();
+    if size > limit {
+        return Err(format!("{} is larger than {limit} bytes", path.display()));
+    }
+    std::fs::read(path).map_err(describe)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -196,6 +206,15 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn read_within_limit_refuses_a_file_over_the_limit() {
+        let path = std::env::temp_dir().join("halfbold-read-limit-test.ttf");
+        std::fs::write(&path, [0u8; 16]).unwrap();
+        assert!(read_within_limit(&path, 8).is_err());
+        assert_eq!(read_within_limit(&path, 16).unwrap().len(), 16);
+        std::fs::remove_file(&path).unwrap();
+    }
 
     #[test]
     fn reply_result_unwraps_ok() {
@@ -222,7 +241,7 @@ mod tests {
     #[test]
     fn backend_round_trips_through_python() {
         let backend = Backend::default();
-        let result = backend.call(vec!["web".to_string()]);
+        let result = backend.call(vec!["installed".to_string()]);
         assert!(result.is_ok(), "{result:?}");
         let error = backend.call(vec!["preview".to_string(), "/nope.ttf".to_string()]);
         assert!(error.unwrap_err().contains("nope.ttf"));

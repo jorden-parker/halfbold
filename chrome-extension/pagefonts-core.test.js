@@ -37,6 +37,11 @@ describe("isConvertibleFamily", () => {
     expect(isConvertibleFamily("Inter")).toBe(true);
   });
 
+  test("skips family names too long to be real", () => {
+    expect(isConvertibleFamily("x".repeat(201))).toBe(false);
+    expect(isConvertibleFamily("x".repeat(200))).toBe(true);
+  });
+
   test("matches families without regard to case", () => {
     expect(familyKey("Source Serif 4")).toBe(familyKey("source serif 4"));
   });

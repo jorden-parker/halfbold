@@ -29,6 +29,8 @@
     pageBytes: 64 * 1024 * 1024,
     stylesheetBytes: 2 * 1024 * 1024,
     fetchTimeoutMs: 15000,
+    familyNameLength: 200,
+    familiesPerPage: 64,
   };
   const FONT_SIGNATURES = ["wOF2", "wOFF", "\0\x01\0\0", "true", "OTTO"];
 
@@ -65,7 +67,11 @@
   }
 
   function isConvertibleFamily(family) {
-    return !GENERIC_FAMILIES.has(familyKey(family)) && !ICON_FAMILY.test(family);
+    return (
+      family.length <= LIMITS.familyNameLength &&
+      !GENERIC_FAMILIES.has(familyKey(family)) &&
+      !ICON_FAMILY.test(family)
+    );
   }
 
   function sourceEntry(entry) {

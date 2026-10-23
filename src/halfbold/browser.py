@@ -37,6 +37,7 @@ EXTENSION_FILES = (
 RETIRED_EXTENSION_FILES = ("halfbold.css", "shadow.js")
 MAX_MESSAGE_SIZE = 16 * 1024 * 1024
 CONVERSION_TIMEOUT = 60
+MAX_PENDING = 32
 HEARTBEAT_INTERVAL = 2
 INSTALLED_REFRESH_INTERVAL = 300
 SERVED_SECRET_BYTES = 32
@@ -351,6 +352,14 @@ def timed_out_replies(pending: dict[Future, tuple[object, float]]) -> list[dict]
     return replies
 
 
+def is_overloaded(pending: dict) -> bool:
+    return len(pending) >= MAX_PENDING
+
+
+def overflow_reply(message: dict) -> dict:
+    return {"type": "unchanged", "id": message["id"], "reason": "host is busy"}
+
+
 def serve(stdin, stdout, pool: ThreadPoolExecutor) -> None:
     installed = InstalledFonts()
     pending: dict[Future, tuple[object, float]] = {}
@@ -386,6 +395,9 @@ def serve(stdin, stdout, pool: ThreadPoolExecutor) -> None:
                 acknowledged = current
             write_status(message, acknowledged)
         elif "id" in message and "type" in message:
+            if is_overloaded(pending):
+                write_message(stdout, overflow_reply(message))
+                continue
             future = pool.submit(safe_reply, message, settings, installed)
             pending[future] = (message["id"], time.monotonic())
 

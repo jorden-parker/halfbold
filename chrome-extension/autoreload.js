@@ -95,7 +95,9 @@ function remembered(key, convert) {
     const conversion = chrome.storage.local.get(storageKey).then(async (stored) => {
       if (stored[storageKey]) return stored[storageKey];
       const reply = await convert();
-      if (reply?.type === "converted") await chrome.storage.local.set({ [storageKey]: reply });
+      if (reply?.type === "converted" && reply.faces?.length) {
+        await chrome.storage.local.set({ [storageKey]: reply });
+      }
       else conversions.delete(storageKey);
       return reply;
     });

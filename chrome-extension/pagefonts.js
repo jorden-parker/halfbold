@@ -203,7 +203,8 @@
   async function scan() {
     const generation = config.generation;
     const families = usedFamilies();
-    const fresh = [...families].filter(([key]) => !requested.has(key));
+    const room = Math.max(LIMITS.familiesPerPage - requested.size, 0);
+    const fresh = [...families].filter(([key]) => !requested.has(key)).slice(0, room);
     if (!fresh.length) return;
     const declared = await declaredFaces();
     await Promise.all(

@@ -3,10 +3,12 @@ import re
 from pathlib import Path
 
 UNSAFE_NAME_CHARACTERS = re.compile(r"[/\\\x00]")
+MAX_STEM_BYTES = 100
 
 
 def file_stem(family: str) -> str:
-    return UNSAFE_NAME_CHARACTERS.sub("_", family.replace(" ", ""))
+    stem = UNSAFE_NAME_CHARACTERS.sub("_", family.replace(" ", ""))
+    return stem.encode()[:MAX_STEM_BYTES].decode(errors="ignore")
 
 
 def contained_file(folder: Path, name: str) -> Path:

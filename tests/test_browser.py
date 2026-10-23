@@ -371,3 +371,15 @@ def test_host_keeps_heartbeats_going_during_a_slow_conversion(host_home):
         assert not any(message.get("id") == 1 for message in seen)
     finally:
         host.kill()
+
+
+def test_requests_beyond_the_pending_limit_are_turned_away():
+    message = {"id": 7, "type": "convert-webfont"}
+
+    assert browser.is_overloaded({}) is False
+    assert browser.is_overloaded(dict.fromkeys(range(browser.MAX_PENDING))) is True
+    assert browser.overflow_reply(message) == {
+        "type": "unchanged",
+        "id": 7,
+        "reason": "host is busy",
+    }

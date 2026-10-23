@@ -424,7 +424,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return args
 
 
-API_ERRORS = (ValueError, TTLibError, OSError, subprocess.SubprocessError)
+API_ERRORS = (
+    ValueError,
+    TTLibError,
+    OSError,
+    RecursionError,
+    subprocess.SubprocessError,
+)
 
 
 def handle(argv: list[str]) -> dict:

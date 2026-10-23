@@ -1,5 +1,6 @@
 import hashlib
 import io
+import os
 from pathlib import Path
 
 import pytest
@@ -281,3 +282,33 @@ def test_default_fonts_install_half_families_for_chrome(
     assert installed == {"sansserif": "Multi Half"}
     assert (fonts_dir / "Multi-Half.ttf").exists()
     assert (fonts_dir / "Multi-HalfBold.ttf").exists()
+
+
+def test_serving_a_font_evicts_the_oldest_files_over_the_quota(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    fonts_dir = tmp_path / "served"
+    fonts_dir.mkdir()
+    monkeypatch.setattr(chrome_fonts, "SERVED_FONTS_QUOTA_BYTES", 250)
+    for age, name in enumerate(["old.ttf", "middle.ttf", "new.ttf"]):
+        font = fonts_dir / name
+        font.write_bytes(b"x" * 100)
+        os.utime(font, (1000 + age, 1000 + age))
+
+    chrome_fonts.prune_served_fonts(fonts_dir)
+
+    assert sorted(path.name for path in fonts_dir.iterdir()) == [
+        "middle.ttf",
+        "new.ttf",
+    ]
+
+
+def test_an_oversized_family_name_is_refused_without_being_echoed(tmp_path: Path):
+    family = "F" * 5000
+
+    conversion = convert_installed_family(
+        family, [], tmp_path / "served", Settings(), SECRET
+    )
+
+    assert conversion.faces == []
+    assert all(family not in note for note in conversion.unchanged)

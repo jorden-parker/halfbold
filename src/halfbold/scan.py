@@ -54,6 +54,8 @@ FONT_DATA_ERRORS = (
     AttributeError,
     OverflowError,
     FeatureLibError,
+    RecursionError,
+    OSError,
 )
 
 Kind = Literal["sans", "serif", "mono"]
@@ -174,7 +176,7 @@ def read_font_info(path: Path) -> FontInfo | None:
 def load_font_info(path: Path) -> FontInfo | None:
     try:
         font = open_font(path, lazy=True)
-    except (OSError, *FONT_DATA_ERRORS):
+    except FONT_DATA_ERRORS:
         return None
     try:
         return read_font_metadata(path, font)

@@ -111,3 +111,23 @@ def test_printable_family_names_print_unchanged(
     assert (
         capsys.readouterr().out == f"would build {stem}-Half.ttf  <- {family}{DETAIL}\n"
     )
+
+
+def test_convert_refuses_to_write_the_bold_face_through_a_symlink(tmp_path: Path):
+    (tmp_path / "fonts").mkdir()
+    fonts = write_family(tmp_path / "fonts", "Family")
+    victim = tmp_path / "victim.txt"
+    victim.write_text("keep")
+    (fonts / "Family-HalfBold.ttf").symlink_to(victim)
+
+    with pytest.raises(ValueError, match="symbolic link"):
+        main(
+            [
+                str(fonts / "Family-Regular.ttf"),
+                str(fonts / "Family-Bold.ttf"),
+                "-o",
+                str(fonts / "Family-Half.ttf"),
+            ]
+        )
+
+    assert victim.read_text() == "keep"
