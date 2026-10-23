@@ -340,7 +340,9 @@ def write_status(message: dict, acknowledged: str | None) -> None:
     status_path.replace(root / "status.json")
 
 
-def timed_out_replies(pending: dict[Future, tuple[object, float]]) -> list[dict]:
+def timed_out_replies(
+    pending: dict[Future, tuple[object, float]], abandoned: set[Future]
+) -> list[dict]:
     now = time.monotonic()
     expired = [
         f for f, (_, started) in pending.items() if now - started > CONVERSION_TIMEOUT
@@ -348,12 +350,18 @@ def timed_out_replies(pending: dict[Future, tuple[object, float]]) -> list[dict]
     replies = []
     for future in expired:
         request_id, _ = pending.pop(future)
+        if not future.cancel():
+            abandoned.add(future)
         replies.append({"type": "unchanged", "id": request_id, "reason": "timed out"})
     return replies
 
 
-def is_overloaded(pending: dict) -> bool:
-    return len(pending) >= MAX_PENDING
+def still_running(abandoned: set[Future]) -> set[Future]:
+    return {future for future in abandoned if not future.done()}
+
+
+def is_overloaded(pending: dict, abandoned: set[Future]) -> bool:
+    return len(pending) + len(abandoned) >= MAX_PENDING
 
 
 def overflow_reply(message: dict) -> dict:
@@ -363,6 +371,7 @@ def overflow_reply(message: dict) -> dict:
 def serve(stdin, stdout, pool: ThreadPoolExecutor) -> None:
     installed = InstalledFonts()
     pending: dict[Future, tuple[object, float]] = {}
+    abandoned: set[Future] = set()
     sent_generation = None
     acknowledged = None
     last_heartbeat = float("-inf")
@@ -378,7 +387,8 @@ def serve(stdin, stdout, pool: ThreadPoolExecutor) -> None:
         for future in [f for f in pending if f.done()]:
             pending.pop(future)
             write_message(stdout, future.result())
-        for reply in timed_out_replies(pending):
+        abandoned = still_running(abandoned)
+        for reply in timed_out_replies(pending, abandoned):
             write_message(stdout, reply)
         now = time.monotonic()
         if now - last_heartbeat >= HEARTBEAT_INTERVAL:
@@ -395,7 +405,7 @@ def serve(stdin, stdout, pool: ThreadPoolExecutor) -> None:
                 acknowledged = current
             write_status(message, acknowledged)
         elif "id" in message and "type" in message:
-            if is_overloaded(pending):
+            if is_overloaded(pending, abandoned):
                 write_message(stdout, overflow_reply(message))
                 continue
             future = pool.submit(safe_reply, message, settings, installed)

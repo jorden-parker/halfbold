@@ -8,7 +8,7 @@ import struct
 import subprocess
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -376,10 +376,30 @@ def test_host_keeps_heartbeats_going_during_a_slow_conversion(host_home):
 def test_requests_beyond_the_pending_limit_are_turned_away():
     message = {"id": 7, "type": "convert-webfont"}
 
-    assert browser.is_overloaded({}) is False
-    assert browser.is_overloaded(dict.fromkeys(range(browser.MAX_PENDING))) is True
+    assert browser.is_overloaded({}, set()) is False
+    assert (
+        browser.is_overloaded(dict.fromkeys(range(browser.MAX_PENDING)), set()) is True
+    )
     assert browser.overflow_reply(message) == {
         "type": "unchanged",
         "id": 7,
         "reason": "host is busy",
     }
+
+
+def test_timed_out_work_that_is_still_running_counts_toward_the_limit(monkeypatch):
+    monkeypatch.setattr(browser, "CONVERSION_TIMEOUT", 0)
+    running = Future()
+    running.set_running_or_notify_cancel()
+    pending = {running: (1, time.monotonic() - 1)}
+    abandoned: set[Future] = set()
+
+    replies = browser.timed_out_replies(pending, abandoned)
+
+    assert replies[0]["reason"] == "timed out"
+    assert pending == {}
+    assert browser.is_overloaded({}, abandoned) is False
+    abandoned.update(Future() for _ in range(browser.MAX_PENDING))
+    assert browser.is_overloaded({}, abandoned) is True
+    running.set_result(None)
+    assert browser.still_running(abandoned) == abandoned - {running}
