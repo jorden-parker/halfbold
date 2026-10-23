@@ -52,7 +52,7 @@ export function installed() {
 export function build(c: Candidate) {
   const args = ["build", c.regular];
   if (c.bold) args.push(c.bold);
-  return api<{ output: string; letters: number }>(...args, "-o", c.output);
+  return api<{ output: string; letters: number }>(...args, "-o", c.output, "--family", c.family);
 }
 
 export function preview(c: Candidate, fontsDir?: string) {
@@ -95,9 +95,19 @@ export function reset(deleteFonts: boolean) {
   return api<ResetResult>("reset", ...(deleteFonts ? ["--delete-fonts"] : []));
 }
 
-export function settings(values?: Partial<Settings>) {
-  const args = values ? ["settings", JSON.stringify(values)] : ["settings"];
-  return api<{ settings: Settings; defaults: Settings }>(...args);
+interface FontSettings {
+  family: string;
+  settings: Settings;
+  defaults: Settings;
+}
+
+export function settings(family: string, values?: Partial<Settings>) {
+  const args = values ? ["settings", family, JSON.stringify(values)] : ["settings", family];
+  return api<FontSettings>(...args);
+}
+
+export function resetSettings(family: string) {
+  return api<FontSettings>("settings", family, "--reset");
 }
 
 const COLLECTION_FACE = /\.ttc#\d+$/i;

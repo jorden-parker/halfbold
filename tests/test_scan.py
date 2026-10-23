@@ -443,3 +443,12 @@ def test_build_all_reports_a_font_that_recurses_and_keeps_going(
 
     assert any(line.startswith("skipped") and "Pair" in line for line in report)
     assert any(line.startswith("built") and "Var" in line for line in report)
+
+
+def test_tuning_one_family_leaves_the_others_at_defaults(multi_weight_family: Path):
+    tuned = Settings().with_font("Multi", {"regular_weight": 300, "bold_weight": 500})
+    paths = sorted(multi_weight_family.glob("*.ttf"))
+    multi = next(c for c in candidates_from_paths(paths, tuned) if c.family == "Multi")
+    untuned = next(c for c in candidates_from_paths(paths) if c.family == "Multi")
+    assert multi.plain_weight == 300
+    assert untuned.plain_weight == 400

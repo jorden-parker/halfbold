@@ -8,6 +8,7 @@ import {
   installed,
   preview,
   reset as resetApi,
+  resetSettings as resetSettingsApi,
   settings as settingsApi,
   setVscodeFont,
   type Candidate,
@@ -39,8 +40,8 @@ interface State {
   selected: Selection;
   sampleText: string;
   settings: Settings | null;
-  defaults: Settings | null;
   draft: Settings | null;
+  tunedFamily: string | null;
   gen: number;
   previewed: { key: string; gen: number; candidate: Candidate } | null;
 }
@@ -56,8 +57,8 @@ const state: State = {
   selected: null,
   sampleText: loadSampleText(),
   settings: null,
-  defaults: null,
   draft: null,
+  tunedFamily: null,
   gen: 0,
   previewed: null,
 };
@@ -369,8 +370,9 @@ function faceLabel(face: Face | null | undefined): string {
 }
 
 function tuningNote(candidate: Candidate | undefined): string {
-  const base = "Applies to every font you build.";
-  if (!candidate || candidate.faces.length === 0) return base;
+  if (!candidate) return "";
+  const base = `Applies to ${candidate.family} only.`;
+  if (candidate.faces.length === 0) return base;
   const faces = candidate.faces.map((face) => `${face.style || "Regular"} ${face.weight}`).join(", ");
   return `${base} ${candidate.family} ships ${faces}; each weight snaps to the nearest.`;
 }
@@ -401,6 +403,19 @@ function renderFaceLabels(candidate: Candidate | undefined = selectedCandidate()
   faceEls.regular_weight.textContent = faceLabel(candidate?.plain_face);
   faceEls.bold_weight.textContent = faceLabel(candidate?.bold_face);
   tuningNoteEl.textContent = tuningNote(candidate);
+  if (candidate && candidate.family !== state.tunedFamily) void loadFontSettings(candidate.family);
+}
+
+function showFontSettings(result: { family: string; settings: Settings }) {
+  if (result.family !== state.tunedFamily) return;
+  state.settings = result.settings;
+  renderKnobs(result.settings);
+}
+
+async function loadFontSettings(family: string) {
+  state.tunedFamily = family;
+  const result = await run("Loading settings…", () => settingsApi(family));
+  if (result) showFontSettings(result);
 }
 
 function onKnobInput(event: Event) {
@@ -419,15 +434,16 @@ function onKnobChange() {
 }
 
 function commitSettings(values: Settings) {
+  const family = state.tunedFamily;
+  if (!family) return;
   state.gen += 1;
   const gen = state.gen;
   state.draft = values;
   markRebuilding();
   settingsRuns.run(async () => {
-    const result = await run("Saving settings…", () => settingsApi(values));
+    const result = await run("Saving settings…", () => settingsApi(family, values));
     if (!result || gen !== state.gen) return;
-    state.settings = result.settings;
-    state.defaults = result.defaults;
+    showFontSettings(result);
     refreshPreview(gen);
     scheduleListRefresh();
   });
@@ -785,17 +801,26 @@ function moveSelection(delta: number) {
   next.scrollIntoView({ block: "nearest" });
 }
 
+async function onResetTuning() {
+  const family = state.tunedFamily;
+  if (!family) return;
+  state.gen += 1;
+  const gen = state.gen;
+  markRebuilding();
+  const result = await run(`Resetting ${family}…`, () => resetSettingsApi(family));
+  if (!result || gen !== state.gen) return;
+  showFontSettings(result);
+  refreshPreview(gen);
+  scheduleListRefresh();
+}
+
 function setupTuning() {
   for (const knob of Object.values(knobs)) {
     knob.input.addEventListener("input", onKnobInput);
     knob.input.addEventListener("change", onKnobChange);
   }
   tuningEl.addEventListener("submit", (event) => event.preventDefault());
-  resetTuningEl.addEventListener("click", () => {
-    if (!state.defaults) return;
-    renderKnobs(state.defaults);
-    commitSettings(state.defaults);
-  });
+  resetTuningEl.addEventListener("click", () => void onResetTuning());
 }
 
 function setupSampleEditing() {
@@ -844,22 +869,14 @@ function init() {
   });
 
   void (async () => {
-    const [installedResult, settingsResult] = await Promise.all([
-      run("Loading fonts…", () => installed()),
-      run("Loading settings…", () => settingsApi()),
-    ]);
+    const installedResult = await run("Loading fonts…", () => installed());
     if (installedResult) {
       state.candidates = installedResult.candidates;
       state.fontsDir = installedResult.fonts_dir;
     }
-    if (settingsResult) {
-      state.settings = settingsResult.settings;
-      state.defaults = settingsResult.defaults;
-      renderKnobs(settingsResult.settings);
-    }
-    renderFaceLabels();
     const first = state.candidates[0];
     state.selected = first ? { tab: "installed", candidate: first } : null;
+    renderFaceLabels();
     renderList();
     void renderDetail();
   })();

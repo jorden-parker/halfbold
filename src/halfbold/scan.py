@@ -341,14 +341,15 @@ def candidates_from_paths(
     for info in infos:
         if info.variable and info.family not in families_done:
             base = " ".join(p for p in info.family.split() if p != "Variable")
+            own = settings.for_family(base)
             candidates.append(
                 Candidate(
                     base,
                     info.path,
                     None,
                     info.kind,
-                    plain_weight=clamped(settings.regular_weight, info.weight_range),
-                    bold_weight=clamped(settings.bold_weight, info.weight_range),
+                    plain_weight=clamped(own.regular_weight, info.weight_range),
+                    bold_weight=clamped(own.bold_weight, info.weight_range),
                 )
             )
             families_done.add(info.family)
@@ -360,7 +361,8 @@ def candidates_from_paths(
         faces = family_faces(members)
         if len(faces) < 2:
             continue
-        plain, bold = resolve_pair(faces, settings.regular_weight, settings.bold_weight)
+        own = settings.for_family(family)
+        plain, bold = resolve_pair(faces, own.regular_weight, own.bold_weight)
         kind = next(i.kind for i in members if i.path == plain.path)
         candidates.append(
             Candidate(
@@ -398,6 +400,7 @@ def build_all(
 def sync_line(
     candidate: Candidate, force: bool, dry_run: bool, settings: Settings
 ) -> str:
+    settings = settings.for_family(candidate.family)
     label = candidate.faces_label
     detail = f"  {label}" if label else ""
     if not force and not candidate.is_stale():

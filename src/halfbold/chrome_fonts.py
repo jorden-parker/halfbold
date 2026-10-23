@@ -333,6 +333,7 @@ def local_face(info: FontInfo) -> ServedFace:
 def installed_half_faces(
     candidate: Candidate, fonts_dir: Path, settings: Settings, secret: bytes
 ) -> list[ServedFace]:
+    settings = settings.for_family(candidate.family)
     paths = [path for path in (candidate.regular, candidate.bold) if path is not None]
     key = served_key([file_identity(path) for path in paths], settings, secret)
     plain = served_half(key, fonts_dir, candidate.regular, candidate.bold, settings)
@@ -376,6 +377,7 @@ def install_half_family(
     if not candidates:
         return None
     candidate = replace(candidates[0], output_dir=fonts_dir)
+    settings = settings.for_family(candidate.family)
     if candidate.is_stale():
         build_halfbold_font(
             candidate.regular, candidate.bold, candidate.output, settings

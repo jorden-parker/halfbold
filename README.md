@@ -157,7 +157,9 @@ the installed face it snapped to, and the note lists the weights that family
 ships. Dragging a slider only moves its number; the font rebuilds when you
 let go, so a drag costs one build, and the specimen dims until it matches
 again. Stops that resolve to the same pair of faces share one build, so
-sliding back over a value you have already seen is instant. They are saved to
+sliding back over a value you have already seen is instant. Each font keeps
+its own sliders: a font you have not touched starts at the defaults, and
+Reset puts the selected font back to them. They are saved per family in
 `~/Library/Application Support/halfbold/settings.json`, which the CLI and the
 launchd watcher read too, so every rebuild uses the same choices.
 

@@ -111,7 +111,7 @@ def test_status_requires_recent_ack_of_current_generation(tmp_path, monkeypatch)
     assert status["synced"]
     assert (status["converted"], status["unchanged"]) == (3, 1)
 
-    save_settings(Settings(bold_share=0.3))
+    save_settings(Settings().with_font("Menlo", {"bold_share": 0.3}))
     assert browser.browser_status()["connected"]
     assert not browser.browser_status()["synced"]
 

@@ -9,9 +9,9 @@ from halfbold.settings import Settings, load_settings, save_settings
 def test_defaults_round_trip(tmp_path: Path):
     path = tmp_path / "settings.json"
     assert load_settings(path) == Settings()
-    saved = save_settings(Settings(bold_share=0.3, bold_weight=800), path)
+    saved = save_settings(Settings().with_font("Fira Code", {"bold_weight": 800}), path)
     assert saved == path
-    assert load_settings(path) == Settings(bold_share=0.3, bold_weight=800)
+    assert load_settings(path).for_family("Fira Code").bold_weight == 800
 
 
 def test_merged_coerces_and_validates():
@@ -67,3 +67,41 @@ def test_rules_tag_ignores_the_weights():
 def test_cache_tag_starts_with_the_rules_tag():
     settings = Settings(bold_share=0.7)
     assert settings.cache_tag().startswith(settings.rules_tag())
+
+
+def test_unlisted_family_gets_defaults_whatever_another_font_chose():
+    tuned = Settings().with_font("Fira Code", {"bold_weight": 800})
+    assert tuned.for_family("Menlo") == Settings()
+    assert tuned.for_family("Fira Code") == Settings(bold_weight=800)
+
+
+def test_without_font_returns_family_to_defaults():
+    tuned = Settings().with_font("Fira Code", {"bold_weight": 800})
+    assert tuned.without_font("Fira Code").for_family("Fira Code") == Settings()
+
+
+def test_with_font_accumulates_values_for_one_family():
+    tuned = Settings().with_font("Menlo", {"bold_share": 0.3})
+    tuned = tuned.with_font("Menlo", {"bold_weight": 800})
+    assert tuned.for_family("Menlo") == Settings(bold_share=0.3, bold_weight=800)
+
+
+def test_with_font_validates_values():
+    with pytest.raises(ValueError, match="bold_share"):
+        Settings().with_font("Menlo", {"bold_share": 0})
+
+
+def test_legacy_flat_keys_are_ignored(tmp_path: Path):
+    path = tmp_path / "settings.json"
+    path.write_text(json.dumps({"bold_weight": 900}))
+    assert load_settings(path).for_family("Menlo") == Settings()
+
+
+def test_as_dict_leaves_out_font_overrides():
+    assert "fonts" not in Settings().with_font("Menlo", {"bold_share": 0.3}).as_dict()
+
+
+def test_cache_tag_changes_with_font_overrides():
+    tuned = Settings().with_font("Menlo", {"bold_share": 0.3})
+    assert tuned.cache_tag() != Settings().cache_tag()
+    assert tuned.for_family("Menlo").cache_tag() == Settings(bold_share=0.3).cache_tag()

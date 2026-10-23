@@ -178,7 +178,7 @@ def preview_half(
     settings: Settings | None = None,
     cache_dir: Path | None = None,
 ) -> Path:
-    settings = settings or load_settings()
+    settings = (settings or load_settings()).for_family(candidate.family)
     cache_dir = cache_dir or CACHE_DIR
     cache_dir.mkdir(parents=True, exist_ok=True)
     stem = candidate.output.stem
@@ -201,7 +201,7 @@ def installed(args: argparse.Namespace) -> dict:
 
 def build(args: argparse.Namespace) -> dict:
     output = args.output or args.regular.with_name(f"{args.regular.stem}-Half.ttf")
-    settings = load_settings()
+    settings = load_settings().for_family(args.family)
     letters = build_halfbold_font(args.regular, args.bold, output, settings)
     build_bold_face(args.regular, args.bold, bold_face_path(output), settings)
     return {
@@ -229,7 +229,7 @@ def preview(args: argparse.Namespace) -> dict:
         candidate = candidate_from_files(args.regular, args.bold)
     return candidate_payload(candidate) | {
         "half": str(preview_half(candidate, settings)),
-        "settings": settings.as_dict(),
+        "settings": settings.for_family(candidate.family).as_dict(),
     }
 
 
@@ -311,10 +311,17 @@ def cask_install(args: argparse.Namespace) -> dict:
 
 def settings_command(args: argparse.Namespace) -> dict:
     current = load_settings()
-    if args.values:
-        current = current.merged(json.loads(args.values))
+    if args.reset:
+        current = current.without_font(args.family)
         save_settings(current)
-    return {"settings": current.as_dict(), "defaults": Settings().as_dict()}
+    elif args.values:
+        current = current.with_font(args.family, json.loads(args.values))
+        save_settings(current)
+    return {
+        "family": args.family,
+        "settings": current.for_family(args.family).as_dict(),
+        "defaults": Settings().as_dict(),
+    }
 
 
 def installed_half_family(family: str, fonts_dir: Path) -> str:
@@ -363,6 +370,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     build_parser.add_argument("regular", type=Path)
     build_parser.add_argument("bold", type=Path, nargs="?")
     build_parser.add_argument("-o", "--output", type=Path)
+    build_parser.add_argument("--family", default="")
     build_parser.set_defaults(handler=build)
 
     preview_parser = subparsers.add_parser("preview")
@@ -412,7 +420,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
 
     settings_parser = subparsers.add_parser("settings")
+    settings_parser.add_argument("family")
     settings_parser.add_argument("values", nargs="?")
+    settings_parser.add_argument("--reset", action="store_true")
     settings_parser.set_defaults(handler=settings_command)
 
     serve_parser = subparsers.add_parser("serve")

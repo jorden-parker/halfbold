@@ -97,16 +97,38 @@ def test_settings_command_saves_and_reports(monkeypatch, tmp_path: Path, capsys)
     path = tmp_path / "settings.json"
     monkeypatch.setattr("halfbold.settings.default_settings_path", lambda: path)
 
-    assert main(["settings", json.dumps({"bold_share": 0.4, "bold_weight": 800})]) == 0
+    assert (
+        main(["settings", "Test", json.dumps({"bold_share": 0.4, "bold_weight": 800})])
+        == 0
+    )
     payload = json.loads(capsys.readouterr().out)
     assert payload["settings"]["bold_share"] == 0.4
     assert payload["defaults"]["bold_share"] == 0.5
 
-    assert main(["settings"]) == 0
+    assert main(["settings", "Test"]) == 0
     assert json.loads(capsys.readouterr().out)["settings"]["bold_weight"] == 800
 
-    assert main(["settings", json.dumps({"bold_share": 2})]) == 1
+    assert main(["settings", "Other"]) == 0
+    assert json.loads(capsys.readouterr().out)["settings"]["bold_weight"] == 700
+
+    assert main(["settings", "Test", json.dumps({"bold_share": 2})]) == 1
     assert "bold_share" in json.loads(capsys.readouterr().out)["error"]
+
+
+def test_settings_reset_returns_one_font_to_defaults(
+    monkeypatch, tmp_path: Path, capsys
+):
+    path = tmp_path / "settings.json"
+    monkeypatch.setattr("halfbold.settings.default_settings_path", lambda: path)
+    assert main(["settings", "Test", json.dumps({"bold_weight": 800})]) == 0
+    assert main(["settings", "Other", json.dumps({"bold_weight": 900})]) == 0
+    capsys.readouterr()
+
+    assert main(["settings", "Test", "--reset"]) == 0
+    assert json.loads(capsys.readouterr().out)["settings"]["bold_weight"] == 700
+
+    assert main(["settings", "Other"]) == 0
+    assert json.loads(capsys.readouterr().out)["settings"]["bold_weight"] == 900
 
 
 def test_preview_cache_key_includes_settings(
@@ -119,7 +141,7 @@ def test_preview_cache_key_includes_settings(
 
     assert main(["preview", str(regular), str(bold)]) == 0
     first = json.loads(capsys.readouterr().out)["half"]
-    assert main(["settings", json.dumps({"bold_share": 0.75})]) == 0
+    assert main(["settings", "Test", json.dumps({"bold_share": 0.75})]) == 0
     capsys.readouterr()
     assert main(["preview", str(regular), str(bold)]) == 0
     second = json.loads(capsys.readouterr().out)
@@ -569,7 +591,14 @@ def test_installed_payload_reports_the_resolved_faces(
     path = multi_weight_family / "settings.json"
     monkeypatch.setattr("halfbold.settings.default_settings_path", lambda: path)
     assert (
-        main(["settings", json.dumps({"regular_weight": 300, "bold_weight": 500})]) == 0
+        main(
+            [
+                "settings",
+                "Multi",
+                json.dumps({"regular_weight": 300, "bold_weight": 500}),
+            ]
+        )
+        == 0
     )
     capsys.readouterr()
 
@@ -598,7 +627,7 @@ def test_preview_reuses_one_build_across_weight_stops(
     built = Path(first).stat().st_mtime
 
     for weight in (350, 450, 500):
-        assert main(["settings", json.dumps({"regular_weight": weight})]) == 0
+        assert main(["settings", "Test", json.dumps({"regular_weight": weight})]) == 0
         capsys.readouterr()
         assert main(["preview", str(regular), str(bold)]) == 0
         payload = json.loads(capsys.readouterr().out)
@@ -664,7 +693,7 @@ def test_preview_from_faces_resolves_the_pair(tmp_path: Path, capsys, monkeypatc
     assert [f["style"] for f in payload["faces"]] == ["Light", "Regular", "Bold"]
     assert payload["output"] == str(fonts / "Three-Half.ttf")
 
-    assert main(["settings", json.dumps({"regular_weight": 300})]) == 0
+    assert main(["settings", "Three", json.dumps({"regular_weight": 300})]) == 0
     capsys.readouterr()
     assert main(["preview", *faces, "--fonts-dir", str(fonts)]) == 0
     payload = json.loads(capsys.readouterr().out)

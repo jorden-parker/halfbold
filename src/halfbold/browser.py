@@ -295,7 +295,7 @@ def handle_request(
     if kind == "convert-webfont":
         faces = [web_face(entry) for entry in message["faces"]]
         conversion = convert_webfont_family(
-            faces, served_fonts_dir(), settings, served_secret()
+            faces, served_fonts_dir(), settings.for_family(""), served_secret()
         )
         return {"type": "converted", **conversion.as_dict()}
     if kind == "convert-installed":

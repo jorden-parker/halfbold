@@ -1,7 +1,8 @@
+import hashlib
 import json
 import sys
 import tempfile
-from dataclasses import asdict, dataclass, fields, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 RULES_VERSION = 4
@@ -25,6 +26,16 @@ def default_settings_path() -> Path:
     return Path(tempfile.gettempdir()) / "halfbold" / "settings.json"
 
 
+TUNING_NAMES = (
+    "bold_share",
+    "bold_ends",
+    "min_word_length",
+    "max_word_length",
+    "regular_weight",
+    "bold_weight",
+)
+
+
 @dataclass(frozen=True)
 class Settings:
     bold_share: float = BOLD_SHARE
@@ -33,6 +44,7 @@ class Settings:
     max_word_length: int = MAX_WORD_LENGTH
     regular_weight: float = REGULAR_WEIGHT
     bold_weight: float = BOLD_WEIGHT
+    fonts: dict[str, dict[str, float]] = field(default_factory=dict)
 
     def validated(self) -> Settings:
         if not 0 < self.bold_share <= 1:
@@ -49,7 +61,7 @@ class Settings:
         return self
 
     def merged(self, values: dict) -> Settings:
-        known = {f.name: type(getattr(self, f.name)) for f in fields(self)}
+        known = {name: type(getattr(self, name)) for name in TUNING_NAMES}
         unknown = sorted(set(values) - set(known))
         if unknown:
             raise ValueError(f"unknown setting: {', '.join(unknown)}")
@@ -60,7 +72,26 @@ class Settings:
         return replace(self, **coerced).validated()
 
     def as_dict(self) -> dict:
-        return asdict(self)
+        return {name: getattr(self, name) for name in TUNING_NAMES}
+
+    def for_family(self, family: str) -> Settings:
+        return replace(self.merged(self.fonts.get(family, {})), fonts={})
+
+    def with_font(self, family: str, values: dict) -> Settings:
+        chosen = {**self.fonts.get(family, {}), **values}
+        validated = self.merged(chosen)
+        coerced = {name: getattr(validated, name) for name in chosen}
+        return replace(self, fonts={**self.fonts, family: coerced})
+
+    def without_font(self, family: str) -> Settings:
+        remaining = {name: v for name, v in self.fonts.items() if name != family}
+        return replace(self, fonts=remaining)
+
+    def fonts_tag(self) -> str:
+        if not self.fonts:
+            return ""
+        digest = hashlib.sha256(json.dumps(self.fonts, sort_keys=True).encode())
+        return f"-f{digest.hexdigest()[:8]}"
 
     def rules_tag(self) -> str:
         return (
@@ -73,6 +104,7 @@ class Settings:
         return (
             f"{self.rules_tag()}"
             f"-w{round(self.regular_weight)}-b{round(self.bold_weight)}"
+            f"{self.fonts_tag()}"
         )
 
 
@@ -81,13 +113,17 @@ def load_settings(path: Path | None = None) -> Settings:
     if not path.exists():
         return Settings()
     try:
-        return Settings().merged(json.loads(path.read_text()))
-    except ValueError, json.JSONDecodeError:
+        fonts = json.loads(path.read_text()).get("fonts", {})
+        settings = Settings()
+        for family, values in fonts.items():
+            settings = settings.with_font(family, values)
+        return settings
+    except ValueError, AttributeError, TypeError:
         return Settings()
 
 
 def save_settings(settings: Settings, path: Path | None = None) -> Path:
     path = path or default_settings_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(settings.as_dict(), indent=2) + "\n")
+    path.write_text(json.dumps({"fonts": settings.fonts}, indent=2) + "\n")
     return path
