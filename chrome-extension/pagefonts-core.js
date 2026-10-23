@@ -147,9 +147,20 @@
     return bytes;
   }
 
+  function encodedFace(face, bytes) {
+    return {
+      url: face.url,
+      weight: face.weight,
+      style: face.style,
+      unicodeRange: face.unicodeRange,
+      data: toBase64(bytes),
+    };
+  }
+
   globalThis.halfboldPageFonts = {
     LIMITS,
     allowsPageFetch,
+    encodedFace,
     familyKey,
     fontFaceDescriptors,
     fromBase64Limited,

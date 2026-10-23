@@ -4,6 +4,7 @@
   const {
     LIMITS,
     allowsPageFetch,
+    encodedFace,
     familyKey,
     fontFaceDescriptors,
     isConvertibleFamily,
@@ -11,7 +12,6 @@
     normalStyle,
     parseFamilyList,
     pickFontUrl,
-    toBase64,
     weightRange,
   } = globalThis.halfboldPageFonts;
   const { createByteBudget, fetchLimitedBytes } = globalThis.halfboldLimitedBody;
@@ -185,12 +185,7 @@
     for (const face of faces.filter((candidate) => allowsFromThisPage(candidate.url))) {
       const bytes = await fetchPageBytes(face.url, familyLeft);
       familyLeft -= bytes.length;
-      encoded.push({
-        weight: face.weight,
-        style: face.style,
-        unicodeRange: face.unicodeRange,
-        data: toBase64(bytes),
-      });
+      encoded.push(encodedFace(face, bytes));
     }
     return encoded;
   }

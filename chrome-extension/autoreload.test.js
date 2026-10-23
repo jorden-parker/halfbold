@@ -197,6 +197,16 @@ describe("service worker font handling", () => {
     expect(await send(env, { type: "halfbold-stored-webfont", faces: [faceAt(HTTPS_FONT)] }, { ...HTTPS_PAGE, origin: "null" })).toBeNull();
   });
 
+  test("converts a face exactly as the content script encodes it", async () => {
+    const declared = { url: HTTPS_FONT, weight: [400, 400], style: "normal", unicodeRange: "" };
+    const encoded = globalThis.halfboldPageFonts.encodedFace(declared, Buffer.from(REAL_FONT, "base64"));
+
+    const reply = await convert(env, [encoded]);
+
+    expect(reply.type).toBe("converted");
+    expect(await send(env, { type: "halfbold-stored-webfont", faces: [declared] }, HTTPS_PAGE)).toEqual(reply);
+  });
+
   test("answers unchanged for a message that carries no faces array", async () => {
     const reply = await send(env, { type: "halfbold-convert-webfont" }, HTTPS_PAGE);
 
