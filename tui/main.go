@@ -1,10 +1,13 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -19,6 +22,18 @@ func (s *stringList) String() string {
 func (s *stringList) Set(value string) error {
 	*s = append(*s, value)
 	return nil
+}
+
+func listLine(c candidate) string {
+	return strings.Join([]string{escapeControls(c.label), c.kind, escapeFilePath(c.regular), escapeFilePath(c.bold)}, "\t")
+}
+
+func describeScanError(err error, dirs []string) string {
+	var pathErr *fs.PathError
+	if !errors.As(err, &pathErr) || slices.Contains(dirs, pathErr.Path) {
+		return err.Error()
+	}
+	return fmt.Sprintf("%s %s: %v", pathErr.Op, escapeFilePath(pathErr.Path), pathErr.Err)
 }
 
 func main() {
@@ -58,7 +73,7 @@ func main() {
 
 	files, err := scanFonts(dirs)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "halfbold-tui: %v\n", err)
+		fmt.Fprintf(os.Stderr, "halfbold-tui: %s\n", describeScanError(err, dirs))
 		os.Exit(1)
 	}
 	candidates := groupCandidates(files)
@@ -69,7 +84,7 @@ func main() {
 
 	if *list {
 		for _, c := range candidates {
-			fmt.Printf("%s\t%s\t%s\t%s\n", c.label, c.kind, c.regular, c.bold)
+			fmt.Println(listLine(c))
 		}
 		return
 	}

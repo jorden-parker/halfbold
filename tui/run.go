@@ -21,7 +21,7 @@ func (r runner) args(c candidate, out string) []string {
 func (r runner) run(c candidate, out string) tea.Cmd {
 	return func() tea.Msg {
 		output, err := exec.Command("uv", r.args(c, out)...).CombinedOutput()
-		return runDoneMsg{output: string(output), err: err}
+		return runDoneMsg{output: escapeRunOutput(string(output), out), err: err}
 	}
 }
 

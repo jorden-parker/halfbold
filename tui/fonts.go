@@ -277,7 +277,58 @@ func familyName(c candidate) string {
 }
 
 func outputPath(c candidate, outDir string) string {
-	label := familyName(c)
-	name := strings.ReplaceAll(label, " ", "") + "-Half.ttf"
+	name := safeFileComponent(familyName(c)) + "-Half.ttf"
 	return filepath.Join(outDir, name)
+}
+
+func safeFileComponent(family string) string {
+	return strings.NewReplacer(" ", "", "/", "_", "\\", "_").Replace(family)
+}
+
+func checkOutputPath(outDir, out string) error {
+	root, err := resolveExisting(outDir)
+	if err != nil {
+		return err
+	}
+	target, err := resolveExisting(out)
+	if err != nil {
+		return err
+	}
+	if !isWithinDir(root, target) {
+		return fmt.Errorf("refusing to write %s: it resolves outside %s", out, outDir)
+	}
+	return nil
+}
+
+func resolveExisting(path string) (string, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	existing := absolute
+	var missing []string
+	for {
+		if _, err := os.Lstat(existing); err == nil {
+			break
+		}
+		parent := filepath.Dir(existing)
+		if parent == existing {
+			return "", fmt.Errorf("cannot resolve %s", path)
+		}
+		missing = append([]string{filepath.Base(existing)}, missing...)
+		existing = parent
+	}
+	resolved, err := filepath.EvalSymlinks(existing)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(append([]string{resolved}, missing...)...), nil
+}
+
+func isWithinDir(dir, target string) bool {
+	rel, err := filepath.Rel(dir, target)
+	if err != nil || filepath.IsAbs(rel) {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

@@ -94,3 +94,89 @@ test("toBase64 encodes large byte arrays", () => {
   const bytes = new Uint8Array(100000).map((_, index) => index % 256);
   expect(Buffer.from(toBase64(bytes), "base64").equals(Buffer.from(bytes))).toBe(true);
 });
+
+const {
+  allowsPageFetch,
+  fromBase64Limited,
+  hasFontSignature,
+  prohibitsMixedContent,
+  isWebUrl,
+  LIMITS,
+} = globalThis.halfboldPageFonts;
+
+describe("isWebUrl", () => {
+  test("accepts only http and https", () => {
+    expect(isWebUrl("https://a.example/x.woff2")).toBe(true);
+    expect(isWebUrl("http://a.example/x.woff2")).toBe(true);
+    expect(isWebUrl("file:///etc/passwd")).toBe(false);
+    expect(isWebUrl("data:font/woff2;base64,AA==")).toBe(false);
+    expect(isWebUrl("not a url")).toBe(false);
+    expect(isWebUrl(undefined)).toBe(false);
+  });
+});
+
+describe("mixed content policy", () => {
+  test("an https page prohibits mixed content and an http page does not", () => {
+    expect(prohibitsMixedContent(["https://a.example/"])).toBe(true);
+    expect(prohibitsMixedContent(["http://a.example/"])).toBe(false);
+  });
+
+  test("any https address among the page's urls prohibits mixed content", () => {
+    expect(prohibitsMixedContent(["http://a.example/", "https://top.example/"])).toBe(true);
+    expect(prohibitsMixedContent([undefined, "about:blank"])).toBe(false);
+  });
+
+  test("an https page never allows an http font or stylesheet", () => {
+    expect(allowsPageFetch(["https://a.example/"], "http://cdn.example/a.woff2")).toBe(false);
+    expect(allowsPageFetch(["https://a.example/"], "https://cdn.example/a.woff2")).toBe(true);
+  });
+
+  test("an http page allows http and https fonts but not other schemes", () => {
+    expect(allowsPageFetch(["http://a.example/"], "http://cdn.example/a.woff2")).toBe(true);
+    expect(allowsPageFetch(["http://a.example/"], "https://cdn.example/a.woff2")).toBe(true);
+    expect(allowsPageFetch(["http://a.example/"], "ftp://cdn.example/a.woff2")).toBe(false);
+  });
+});
+
+describe("hasFontSignature", () => {
+  const bytesOf = (text) => new TextEncoder().encode(text);
+
+  test("accepts the signatures of woff2, woff, truetype, opentype and collections", () => {
+    expect(hasFontSignature(bytesOf("wOF2 rest"))).toBe(true);
+    expect(hasFontSignature(bytesOf("wOFF rest"))).toBe(true);
+    expect(hasFontSignature(new Uint8Array([0, 1, 0, 0, 9]))).toBe(true);
+    expect(hasFontSignature(bytesOf("true rest"))).toBe(true);
+    expect(hasFontSignature(bytesOf("OTTO rest"))).toBe(true);
+  });
+
+  test("rejects html, empty and very short data", () => {
+    expect(hasFontSignature(bytesOf("<html>"))).toBe(false);
+    expect(hasFontSignature(new Uint8Array(0))).toBe(false);
+    expect(hasFontSignature(bytesOf("wOF"))).toBe(false);
+  });
+});
+
+describe("fromBase64Limited", () => {
+  test("decodes base64 that fits the limit", () => {
+    expect(fromBase64Limited(toBase64(new Uint8Array([9, 8, 7])), 3)).toEqual(
+      new Uint8Array([9, 8, 7]),
+    );
+  });
+
+  test("rejects decoded data over the limit", () => {
+    expect(() => fromBase64Limited(toBase64(new Uint8Array(4)), 3)).toThrow("too large");
+  });
+
+  test("rejects text too long to fit the limit before decoding it", () => {
+    expect(() => fromBase64Limited("A".repeat(100), 3)).toThrow("too large");
+  });
+});
+
+describe("LIMITS", () => {
+  test("bounds each family, each page and each stylesheet", () => {
+    expect(LIMITS.familyBytes).toBe(16 * 1024 * 1024);
+    expect(LIMITS.pageBytes).toBe(64 * 1024 * 1024);
+    expect(LIMITS.stylesheetBytes).toBe(2 * 1024 * 1024);
+    expect(LIMITS.fetchTimeoutMs).toBeGreaterThan(0);
+  });
+});

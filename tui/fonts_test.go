@@ -70,6 +70,21 @@ func TestOutputPathRemovesSpaces(t *testing.T) {
 	}
 }
 
+func TestStoredFamilyAndOutputPathKeepControlCharacters(t *testing.T) {
+	hostile := "Evil\x1b]52;c;x\x07Font"
+	candidates := groupCandidates([]fontFile{{path: "/f/Evil.ttf", family: hostile, variable: true, kind: "sans"}})
+	if len(candidates) != 1 {
+		t.Fatalf("expected 1 candidate, got %d", len(candidates))
+	}
+	if candidates[0].label != hostile {
+		t.Fatalf("stored label changed: got %q, want %q", candidates[0].label, hostile)
+	}
+	want := "/x/Evil\x1b]52;c;x\x07Font-Half.ttf"
+	if got := outputPath(candidates[0], "/x"); got != want {
+		t.Fatalf("output path changed: got %q, want %q", got, want)
+	}
+}
+
 func TestReadTableTagsDetectsGlyfAndFvar(t *testing.T) {
 	data := buildSfntHeader(t, "\x00\x01\x00\x00", [][4]byte{{'g', 'l', 'y', 'f'}, {'f', 'v', 'a', 'r'}})
 	tags, err := readTableTags(data)
@@ -296,4 +311,78 @@ func buildSfntHeader(t *testing.T, version string, tags [][4]byte) []byte {
 		copy(data[offset:offset+4], tag[:])
 	}
 	return data
+}
+
+func TestOutputPathKeepsNormalFamilyNames(t *testing.T) {
+	cases := map[string]string{
+		"Inter":            "Inter-Half.ttf",
+		"Zürich Sans":      "ZürichSans-Half.ttf",
+		"Fira Code (x)":    "FiraCode(x)-Half.ttf",
+		"Source-Serif Pro": "Source-SerifPro-Half.ttf",
+	}
+	for family, want := range cases {
+		if got := filepath.Base(outputPath(candidate{label: family}, "/x")); got != want {
+			t.Fatalf("family %q: got %q, want %q", family, got, want)
+		}
+	}
+}
+
+func TestOutputPathStaysInsideOutputDirForHostileFamilies(t *testing.T) {
+	families := []string{"../../Evil", "/etc/passwd", "..", "a\\..\\b", "../"}
+	for _, family := range families {
+		got := outputPath(candidate{label: family}, "/x")
+		if filepath.Dir(got) != "/x" {
+			t.Fatalf("family %q escaped to %q", family, got)
+		}
+	}
+}
+
+func TestCheckOutputPathAcceptsFileInsideDirectory(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "Inter-Half.ttf")
+	if err := checkOutputPath(dir, out); err != nil {
+		t.Fatalf("unexpected refusal: %v", err)
+	}
+	if err := os.WriteFile(out, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkOutputPath(dir, out); err != nil {
+		t.Fatalf("existing output refused: %v", err)
+	}
+}
+
+func TestCheckOutputPathRefusesSymlinkedDirectoryEscape(t *testing.T) {
+	root := t.TempDir()
+	outDir := filepath.Join(root, "out")
+	outside := filepath.Join(root, "outside")
+	for _, dir := range []string{outDir, outside} {
+		if err := os.Mkdir(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(outside, filepath.Join(outDir, "link")); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkOutputPath(outDir, filepath.Join(outDir, "link", "Evil-Half.ttf")); err == nil {
+		t.Fatal("expected refusal for a symlinked directory escape")
+	}
+}
+
+func TestCheckOutputPathRefusesSymlinkedFileEscape(t *testing.T) {
+	root := t.TempDir()
+	outDir := filepath.Join(root, "out")
+	victim := filepath.Join(root, "notes.txt")
+	if err := os.Mkdir(outDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(victim, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(outDir, "Evil-Half.ttf")
+	if err := os.Symlink(victim, out); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkOutputPath(outDir, out); err == nil {
+		t.Fatal("expected refusal for a symlinked output file")
+	}
 }

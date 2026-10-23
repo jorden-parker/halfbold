@@ -24,6 +24,13 @@
   const WEIGHT_KEYWORDS = { normal: 400, bold: 700 };
   const QUOTES = new Set(['"', "'"]);
   const PAREN_DEPTH = { "(": 1, ")": -1 };
+  const LIMITS = {
+    familyBytes: 16 * 1024 * 1024,
+    pageBytes: 64 * 1024 * 1024,
+    stylesheetBytes: 2 * 1024 * 1024,
+    fetchTimeoutMs: 15000,
+  };
+  const FONT_SIGNATURES = ["wOF2", "wOFF", "\0\x01\0\0", "true", "OTTO"];
 
   function nextNesting(nesting, char) {
     if (nesting.quote) return { ...nesting, quote: char === nesting.quote ? null : nesting.quote };
@@ -107,14 +114,53 @@
     return btoa(binary);
   }
 
+  function isWebUrl(value) {
+    return protocolOf(value) === "http:" || protocolOf(value) === "https:";
+  }
+
+  function protocolOf(value) {
+    try {
+      return new URL(value).protocol;
+    } catch {
+      return "";
+    }
+  }
+
+  function prohibitsMixedContent(pageUrls) {
+    return pageUrls.some((url) => protocolOf(url) === "https:");
+  }
+
+  function allowsPageFetch(pageUrls, url) {
+    if (!isWebUrl(url)) return false;
+    return !(protocolOf(url) === "http:" && prohibitsMixedContent(pageUrls));
+  }
+
+  function hasFontSignature(bytes) {
+    const prefix = String.fromCharCode(...bytes.subarray(0, 4));
+    return FONT_SIGNATURES.includes(prefix);
+  }
+
+  function fromBase64Limited(text, limit) {
+    if (text.length > Math.ceil(limit / 3) * 4) throw new Error("too large base64");
+    const bytes = Uint8Array.from(atob(text), (char) => char.charCodeAt(0));
+    if (bytes.length > limit) throw new Error("too large data");
+    return bytes;
+  }
+
   globalThis.halfboldPageFonts = {
+    LIMITS,
+    allowsPageFetch,
     familyKey,
     fontFaceDescriptors,
+    fromBase64Limited,
+    hasFontSignature,
     isConvertibleFamily,
+    isWebUrl,
     localSource,
     normalStyle,
     parseFamilyList,
     pickFontUrl,
+    prohibitsMixedContent,
     toBase64,
     weightRange,
   };

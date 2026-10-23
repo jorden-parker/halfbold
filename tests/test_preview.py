@@ -1,3 +1,4 @@
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -126,6 +127,59 @@ def test_cli_preview_png_writes_file(variable_font: Path, tmp_path: Path, capsys
     assert main(["--preview", str(variable_font), "--png", str(out)]) == 0
     assert out.exists()
     assert "wrote" in capsys.readouterr().out
+
+
+def test_cli_preview_png_path_prints_unchanged(
+    variable_font: Path, tmp_path: Path, capsys
+):
+    out = tmp_path / "p\x1b]0;title\x07.png"
+    assert main(["--preview", str(variable_font), "--png", str(out)]) == 0
+    assert out.exists()
+    assert capsys.readouterr().out == f"wrote {out}\n"
+
+
+def test_preview_fallback_path_prints_family_escaped(
+    tmp_path: Path, monkeypatch, capsys
+):
+    fonts = tmp_path / "fonts"
+    fonts.mkdir()
+    family = "Ev\x1b]0;pwn\x07 Name"
+    make_font(fonts / "Family-Regular.ttf", family, "Regular", 100)
+    make_font(fonts / "Family-Bold.ttf", family, "Bold", 200)
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(scratch))
+    for variable in ("TERM", "KITTY_WINDOW_ID", "GHOSTTY_RESOURCES_DIR"):
+        monkeypatch.delenv(variable, raising=False)
+
+    assert main(["--preview", str(fonts)]) == 0
+
+    assert capsys.readouterr().out == (
+        "this terminal has no kitty graphics support; wrote "
+        f"{scratch}/halfbold-preview-Ev\\x1b]0;pwn\\x07Name.png\n"
+    )
+
+
+def test_preview_fallback_keeps_a_hostile_family_in_the_temp_folder(
+    tmp_path: Path, monkeypatch, capsys
+):
+    fonts = tmp_path / "fonts"
+    fonts.mkdir()
+    family = "Hostile/../../Escape"
+    make_font(fonts / "Family-Regular.ttf", family, "Regular", 100)
+    make_font(fonts / "Family-Bold.ttf", family, "Bold", 200)
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(scratch))
+    for variable in ("TERM", "KITTY_WINDOW_ID", "GHOSTTY_RESOURCES_DIR"):
+        monkeypatch.delenv(variable, raising=False)
+
+    assert main(["--preview", str(fonts)]) == 0
+
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["fonts", "scratch"]
+    assert [p.name for p in scratch.iterdir()] == [
+        "halfbold-preview-Hostile_.._.._Escape.png"
+    ]
 
 
 def test_cli_preview_directory_previews_each_candidate(tmp_path: Path, capsys):

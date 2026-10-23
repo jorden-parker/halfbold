@@ -30,22 +30,22 @@ var (
 
 type item struct{ c candidate }
 
-func (i item) Title() string { return i.c.label }
+func (i item) Title() string { return escapeControls(i.c.label) }
 
 func (i item) Description() string {
 	if i.c.bold == "" {
-		return i.c.kind + "  variable font  " + filepath.Base(i.c.regular)
+		return escapeControls(i.c.kind + "  variable font  " + filepath.Base(i.c.regular))
 	}
-	return i.c.kind + "  Regular + Bold pair  " + filepath.Base(i.c.regular) + " + " + filepath.Base(i.c.bold)
+	return escapeControls(i.c.kind + "  Regular + Bold pair  " + filepath.Base(i.c.regular) + " + " + filepath.Base(i.c.bold))
 }
 
-func (i item) FilterValue() string { return i.c.label }
+func (i item) FilterValue() string { return escapeControls(i.c.label) }
 
 type caskItem struct{ token string }
 
-func (i caskItem) Title() string       { return i.token }
-func (i caskItem) Description() string { return "brew install --cask " + i.token }
-func (i caskItem) FilterValue() string { return i.token }
+func (i caskItem) Title() string       { return escapeControls(i.token) }
+func (i caskItem) Description() string { return "brew install --cask " + escapeControls(i.token) }
+func (i caskItem) FilterValue() string { return escapeControls(i.token) }
 
 type runDoneMsg struct {
 	output string
@@ -117,7 +117,17 @@ func (m model) startRun(c candidate) (model, tea.Cmd) {
 		dir = filepath.Dir(m.chosen.regular)
 	}
 	out := outputPath(m.chosen, dir)
+	if err := checkOutputPath(dir, out); err != nil {
+		return m.showError(err), nil
+	}
 	return m, tea.Batch(m.spinner.Tick, m.runner.run(m.chosen, out))
+}
+
+func (m model) showError(err error) model {
+	m.screen = screenDone
+	m.err = err
+	m.output = err.Error()
+	return m
 }
 
 func (m model) showAllFonts() (model, tea.Cmd) {
@@ -279,7 +289,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.startRun(msg.candidates[0])
 		}
 		m.list.SetItems(itemsFor(msg.candidates))
-		m.list.Title = msg.token + " installed: pick a font to convert"
+		m.list.Title = escapeControls(msg.token) + " installed: pick a font to convert"
 		m.list.ResetFilter()
 		m.list.ResetSelected()
 		m.screen = screenCaskPick
@@ -301,13 +311,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) View() string {
 	switch m.screen {
 	case screenRunning:
-		return fmt.Sprintf("%s converting %s …\n", m.spinner.View(), m.chosen.label)
+		return fmt.Sprintf("%s converting %s …\n", m.spinner.View(), escapeControls(m.chosen.label))
 	case screenDone:
 		return m.doneView()
 	case screenBrewLoading:
 		return fmt.Sprintf("%s searching Homebrew font casks …\n", m.spinner.View())
 	case screenBrewInstalling:
-		return fmt.Sprintf("%s brew install --cask %s …\n", m.spinner.View(), m.caskToken)
+		return fmt.Sprintf("%s brew install --cask %s …\n", m.spinner.View(), escapeControls(m.caskToken))
 	case screenBrewPick:
 		return m.brewList.View() + "\n" + helpStyle.Render("enter: install  p: preview  /: filter  esc: back  q: quit")
 	case screenCaskPick:
@@ -320,7 +330,7 @@ func (m model) View() string {
 func (m model) doneView() string {
 	var body string
 	if m.err != nil {
-		body = errorStyle.Render(lastLines(m.output, 15))
+		body = errorStyle.Render(escapeOutput(lastLines(m.output, 15)))
 	} else {
 		body = m.output + "\nEnable \"calt\" in your app if it is off."
 	}

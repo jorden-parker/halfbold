@@ -20,6 +20,7 @@
       ],
       "js": [
         "pagefonts-core.js",
+        "limited-body.js",
         "pagefonts.js"
       ],
       "run_at": "document_start",

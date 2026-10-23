@@ -1,10 +1,12 @@
 import re
+import struct
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
 
+from fontTools.feaLib.error import FeatureLibError
 from fontTools.ttLib import TTFont, TTLibError
 
 from halfbold.build import (
@@ -19,6 +21,7 @@ from halfbold.collection import (
     open_font,
     source_file,
 )
+from halfbold.output_paths import contained_file, file_stem
 from halfbold.settings import Settings
 
 STYLE_WEIGHTS = {
@@ -41,6 +44,17 @@ STYLE_WEIGHTS = {
     "heavy": 900,
 }
 FALLBACK_WEIGHT = 400
+FONT_DATA_ERRORS = (
+    ValueError,
+    TTLibError,
+    KeyError,
+    IndexError,
+    struct.error,
+    AssertionError,
+    AttributeError,
+    OverflowError,
+    FeatureLibError,
+)
 
 Kind = Literal["sans", "serif", "mono"]
 KINDS: tuple[Kind, ...] = ("sans", "serif", "mono")
@@ -73,13 +87,18 @@ class Candidate:
     bold_weight: float | None = None
 
     @property
+    def folder(self) -> Path:
+        return self.output_dir or self.regular.parent
+
+    @property
     def output(self) -> Path:
-        stem = self.family.replace(" ", "")
-        return (self.output_dir or self.regular.parent) / f"{stem}-{STYLE_SUFFIX}.ttf"
+        return contained_file(
+            self.folder, f"{file_stem(self.family)}-{STYLE_SUFFIX}.ttf"
+        )
 
     @property
     def bold_face_output(self) -> Path:
-        return bold_face_path(self.output)
+        return contained_file(self.folder, bold_face_path(self.output).name)
 
     @property
     def sources(self) -> list[Path]:
@@ -155,29 +174,35 @@ def read_font_info(path: Path) -> FontInfo | None:
 def load_font_info(path: Path) -> FontInfo | None:
     try:
         font = open_font(path, lazy=True)
-    except TTLibError, OSError:
+    except (OSError, *FONT_DATA_ERRORS):
         return None
     try:
-        if "glyf" not in font:
-            return None
-        name = font["name"]
-        family = name.getDebugName(16) or name.getDebugName(1) or ""
-        style = name.getDebugName(17) or name.getDebugName(2) or ""
-        axes = font["fvar"].axes if "fvar" in font else []
-        axis = next((a for a in axes if a.axisTag == "wght"), None)
-        kind = font_kind(font, family)
-        weight_range = None if axis is None else (axis.minValue, axis.maxValue)
-        return FontInfo(
-            path,
-            family,
-            style,
-            face_weight(font, style),
-            axis is not None,
-            kind,
-            weight_range,
-        )
+        return read_font_metadata(path, font)
+    except FONT_DATA_ERRORS:
+        return None
     finally:
         font.close()
+
+
+def read_font_metadata(path: Path, font: TTFont) -> FontInfo | None:
+    if "glyf" not in font:
+        return None
+    name = font["name"]
+    family = name.getDebugName(16) or name.getDebugName(1) or ""
+    style = name.getDebugName(17) or name.getDebugName(2) or ""
+    axes = font["fvar"].axes if "fvar" in font else []
+    axis = next((a for a in axes if a.axisTag == "wght"), None)
+    kind = font_kind(font, family)
+    weight_range = None if axis is None else (axis.minValue, axis.maxValue)
+    return FontInfo(
+        path,
+        family,
+        style,
+        face_weight(font, style),
+        axis is not None,
+        kind,
+        weight_range,
+    )
 
 
 def is_half_output(info: FontInfo) -> bool:
@@ -360,28 +385,31 @@ def build_all(
     settings = settings or Settings()
     report: list[str] = []
     for candidate in find_candidates(fonts_dir, settings):
-        label = candidate.faces_label
-        detail = f"  {label}" if label else ""
-        if not force and not candidate.is_stale():
-            report.append(f"up to date  {candidate.output.name}  ({candidate.kind})")
-            continue
-        if dry_run:
-            report.append(
-                f"would build {candidate.output.name}  "
-                f"<- {candidate.family}{detail} ({candidate.kind})"
-            )
-            continue
         try:
-            build_halfbold_font(
-                candidate.regular, candidate.bold, candidate.output, settings
-            )
-            build_bold_face(
-                candidate.regular, candidate.bold, candidate.bold_face_output, settings
-            )
-            report.append(
-                f"built       {candidate.output.name}  "
-                f"<- {candidate.family}{detail} ({candidate.kind})"
-            )
-        except (ValueError, TTLibError) as err:
-            report.append(f"skipped     {candidate.family} ({candidate.kind}): {err}")
+            report.append(sync_line(candidate, force, dry_run, settings))
+        except FONT_DATA_ERRORS as err:
+            name = candidate.family or candidate.regular.name
+            report.append(f"skipped     {name} ({candidate.kind}): {err}")
     return report
+
+
+def sync_line(
+    candidate: Candidate, force: bool, dry_run: bool, settings: Settings
+) -> str:
+    label = candidate.faces_label
+    detail = f"  {label}" if label else ""
+    if not force and not candidate.is_stale():
+        return f"up to date  {candidate.output.name}  ({candidate.kind})"
+    if dry_run:
+        return (
+            f"would build {candidate.output.name}  "
+            f"<- {candidate.family}{detail} ({candidate.kind})"
+        )
+    build_halfbold_font(candidate.regular, candidate.bold, candidate.output, settings)
+    build_bold_face(
+        candidate.regular, candidate.bold, candidate.bold_face_output, settings
+    )
+    return (
+        f"built       {candidate.output.name}  "
+        f"<- {candidate.family}{detail} ({candidate.kind})"
+    )

@@ -1,10 +1,15 @@
 importScripts("pagefonts-core.js");
 
-const { familyKey, toBase64 } = globalThis.halfboldPageFonts;
+const {
+  LIMITS,
+  allowsPageFetch,
+  familyKey,
+  fromBase64Limited,
+  hasFontSignature,
+  prohibitsMixedContent,
+} = globalThis.halfboldPageFonts;
 const GENERIC_FAMILIES = ["standard", "sansserif", "serif", "fixed"];
-const MAX_FONT_BYTES = 16 * 1024 * 1024;
-const MAX_CSS_BYTES = 2 * 1024 * 1024;
-const CONTENT_SCRIPTS = ["pagefonts-core.js", "pagefonts.js"];
+const CONTENT_SCRIPTS = ["pagefonts-core.js", "limited-body.js", "pagefonts.js"];
 let port;
 let retryTimer;
 let nextRequestId = 1;
@@ -17,15 +22,6 @@ const frameTotals = new Map();
 const restoredConfig = chrome.storage.local.get("config").then((stored) => {
   if (stored.config && !config.generation) config = stored.config;
 });
-
-function isWebUrl(value) {
-  try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
 
 function askHost(message) {
   if (!port) return Promise.resolve(null);
@@ -48,41 +44,53 @@ function releaseWaiting() {
   waiting.clear();
 }
 
-async function fetchLimited(url, limit) {
-  const response = await fetch(url, { credentials: "omit" });
-  if (!response.ok) throw new Error(`${response.status} ${url}`);
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  if (bytes.length > limit) throw new Error(`too large ${url}`);
-  return bytes;
+function pageUrlsOf(sender) {
+  return [sender.origin, sender.tab?.url];
 }
 
-async function encodedFaces(faces) {
+function facesOf(message) {
+  return Array.isArray(message.faces) ? message.faces : [];
+}
+
+function hasTupleOrigin(sender) {
+  return typeof sender.origin === "string" && sender.origin !== "null";
+}
+
+function fetchableFaces(faces, sender) {
+  if (!hasTupleOrigin(sender)) return [];
+  return faces.filter((face) => allowsPageFetch(pageUrlsOf(sender), face.url));
+}
+
+function servedKey(key) {
+  return `served:${config.generation}:${key}`;
+}
+
+function decodedFaces(faces) {
   let total = 0;
-  return Promise.all(
-    faces.filter((face) => isWebUrl(face.url)).map(async (face) => {
-      const bytes = await fetchLimited(face.url, MAX_FONT_BYTES);
-      total += bytes.length;
-      if (total > MAX_FONT_BYTES) throw new Error("family too large");
-      return {
-        weight: face.weight,
-        style: face.style,
-        unicodeRange: face.unicodeRange,
-        data: toBase64(bytes),
-      };
-    }),
-  );
+  return faces.map((face) => {
+    const bytes = fromBase64Limited(face.data, LIMITS.familyBytes - total);
+    if (!hasFontSignature(bytes)) throw new Error("not a font");
+    total += bytes.length;
+    return {
+      weight: face.weight,
+      style: face.style,
+      unicodeRange: face.unicodeRange,
+      data: face.data,
+    };
+  });
 }
 
 async function convertWebfont(faces) {
   try {
-    return await askHost({ type: "convert-webfont", faces: await encodedFaces(faces) });
+    if (!faces.length) throw new Error("no usable faces");
+    return await askHost({ type: "convert-webfont", faces: decodedFaces(faces) });
   } catch (error) {
     return { type: "unchanged", reason: String(error) };
   }
 }
 
 function remembered(key, convert) {
-  const storageKey = `served:${config.generation}:${key}`;
+  const storageKey = servedKey(key);
   if (!conversions.has(storageKey)) {
     const conversion = chrome.storage.local.get(storageKey).then(async (stored) => {
       if (stored[storageKey]) return stored[storageKey];
@@ -101,15 +109,6 @@ function webfontKey(faces) {
     .map((face) => [face.url, face.weight.join(" "), face.style, face.unicodeRange].join("|"))
     .sort()
     .join("\n");
-}
-
-async function fetchCss(url) {
-  if (!isWebUrl(url)) return null;
-  try {
-    return { css: new TextDecoder().decode(await fetchLimited(url, MAX_CSS_BYTES)) };
-  } catch {
-    return null;
-  }
 }
 
 function recordTotals(sender, message) {
@@ -131,24 +130,44 @@ function summedTotals() {
   return { converted, unchanged };
 }
 
+function convertPageFaces(message, sender) {
+  const faces = fetchableFaces(facesOf(message), sender);
+  return remembered(storageKeyFor(faces, sender), () => convertWebfont(faces));
+}
+
+function storageKeyFor(faces, sender) {
+  const key = `${sender.origin}\n${webfontKey(faces)}`;
+  return prohibitsMixedContent(pageUrlsOf(sender)) ? `no-mixed:${key}` : key;
+}
+
+async function storedWebfont(message, sender) {
+  const storageKey = servedKey(storageKeyFor(fetchableFaces(facesOf(message), sender), sender));
+  const stored = await chrome.storage.local.get(storageKey);
+  return stored[storageKey] ?? null;
+}
+
+function convertInstalled(message) {
+  return remembered(`installed:${familyKey(message.family)}`, () =>
+    askHost({ type: "convert-installed", family: message.family }),
+  );
+}
+
+function reportTotals(message, sender) {
+  recordTotals(sender, message);
+  return Promise.resolve(null);
+}
+
+const pageHandlers = new Map([
+  ["halfbold-config", () => restoredConfig.then(() => config)],
+  ["halfbold-stored-webfont", storedWebfont],
+  ["halfbold-convert-webfont", convertPageFaces],
+  ["halfbold-convert-installed", convertInstalled],
+  ["halfbold-totals", reportTotals],
+]);
+
 function handlePageMessage(message, sender) {
-  switch (message.type) {
-    case "halfbold-config":
-      return restoredConfig.then(() => config);
-    case "halfbold-fetch-css":
-      return fetchCss(message.url);
-    case "halfbold-convert-webfont":
-      return remembered(webfontKey(message.faces), () => convertWebfont(message.faces));
-    case "halfbold-convert-installed":
-      return remembered(`installed:${familyKey(message.family)}`, () =>
-        askHost({ type: "convert-installed", family: message.family }),
-      );
-    case "halfbold-totals":
-      recordTotals(sender, message);
-      return Promise.resolve(null);
-    default:
-      return null;
-  }
+  const handler = pageHandlers.get(message.type);
+  return handler ? handler(message, sender) : null;
 }
 
 chrome.runtime.onMessage.addListener((message, sender, respond) => {

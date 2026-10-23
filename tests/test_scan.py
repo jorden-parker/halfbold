@@ -1,12 +1,17 @@
 import os
+import random
+import shutil
+import struct
 from pathlib import Path
 
 from conftest import make_collection, make_font, make_variable_font
 from fontTools.ttLib import TTFont
+from fontTools.ttLib.sfnt import TTC_V1
 
 from halfbold.cli import main
 from halfbold.collection import collection_members
 from halfbold.scan import (
+    Candidate,
     Face,
     build_all,
     candidates_from_paths,
@@ -295,3 +300,110 @@ def test_read_font_info_reads_a_collection_face(tmp_path: Path):
 
     assert info is not None
     assert info.style == "Bold"
+
+
+def test_read_font_info_skips_an_over_cap_header_named_as_a_font(tmp_path: Path):
+    crafted = tmp_path / "Huge.ttf"
+    crafted.write_bytes(struct.pack(">4sLL", b"ttcf", TTC_V1, 2**26))
+
+    assert read_font_info(crafted) is None
+
+
+FUZZ_ROUNDS = 150
+
+
+def shorten_table(path: Path, tag: bytes, length: int) -> None:
+    data = bytearray(path.read_bytes())
+    table_count = struct.unpack_from(">H", data, 4)[0]
+    for index in range(table_count):
+        record = 12 + 16 * index
+        if bytes(data[record : record + 4]) == tag:
+            struct.pack_into(">L", data, record + 12, length)
+    path.write_bytes(bytes(data))
+
+
+def test_read_font_info_skips_a_font_with_a_corrupt_table(tmp_path: Path):
+    broken = tmp_path / "Broken-Regular.ttf"
+    make_font(broken, "Broken", "Regular", 400)
+    shorten_table(broken, b"post", 2)
+
+    assert read_font_info(broken) is None
+
+
+def test_build_all_skips_a_font_that_fails_to_build_and_keeps_going(tmp_path: Path):
+    fonts = tmp_path / "fonts"
+    fonts.mkdir()
+    make_font(fonts / "Good-Regular.ttf", "Good", "Regular", 100)
+    make_font(fonts / "Good-Bold.ttf", "Good", "Bold", 200)
+    make_font(fonts / "Bad-Regular.ttf", "Bad", "Regular", 100)
+    bad_bold = make_font(fonts / "Bad-Bold.ttf", "Bad", "Bold", 200)
+    shorten_table(bad_bold, b"glyf", 2)
+
+    report = build_all(fonts)
+
+    assert any(line.startswith("built") and "Good-Half.ttf" in line for line in report)
+    assert any(line.startswith("skipped     Bad ") for line in report)
+
+
+def flip_random_bytes(path: Path, rng: random.Random) -> None:
+    data = bytearray(path.read_bytes())
+    for _ in range(rng.randint(1, 12)):
+        data[rng.randrange(len(data))] = rng.randrange(256)
+    path.write_bytes(bytes(data))
+
+
+def test_build_all_never_raises_on_byte_flipped_fonts(tmp_path: Path):
+    source = tmp_path / "source"
+    source.mkdir()
+    make_font(source / "Fuzz-Regular.ttf", "Fuzz", "Regular", 100)
+    make_font(source / "Fuzz-Bold.ttf", "Fuzz", "Bold", 200)
+    for seed in range(FUZZ_ROUNDS):
+        rng = random.Random(seed)
+        work = tmp_path / f"round{seed}"
+        shutil.copytree(source, work)
+        flip_random_bytes(work / rng.choice(["Fuzz-Regular.ttf", "Fuzz-Bold.ttf"]), rng)
+
+        build_all(work)
+
+
+def test_candidate_output_keeps_a_hostile_family_inside_the_folder(tmp_path: Path):
+    fonts = tmp_path / "fonts"
+    fonts.mkdir()
+    candidate = Candidate(
+        "../../Escape", fonts / "a.ttf", fonts / "b.ttf", "sans", output_dir=fonts
+    )
+
+    assert candidate.output.parent == fonts
+    assert candidate.bold_face_output.parent == fonts
+
+
+def test_build_all_writes_a_hostile_family_only_inside_the_fonts_folder(
+    tmp_path: Path,
+):
+    fonts = tmp_path / "fonts"
+    fonts.mkdir()
+    make_font(fonts / "Hostile-Regular.ttf", "Hostile/../../Escape", "Regular", 100)
+    make_font(fonts / "Hostile-Bold.ttf", "Hostile/../../Escape", "Bold", 200)
+
+    report = build_all(fonts)
+
+    assert report[0].startswith("built")
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["fonts"]
+
+
+def test_build_all_refuses_a_symlink_where_the_output_goes(tmp_path: Path):
+    fonts = tmp_path / "fonts"
+    fonts.mkdir()
+    outside = tmp_path / "outside.ttf"
+    outside.write_bytes(b"keep")
+    make_font(fonts / "Pair-Regular.ttf", "Pair", "Regular", 100)
+    make_font(fonts / "Pair-Bold.ttf", "Pair", "Bold", 200)
+    (fonts / "Pair-Half.ttf").symlink_to(outside)
+
+    report = build_all(fonts)
+
+    assert report == [
+        "skipped     Pair (sans): refusing to write 'Pair-Half.ttf': "
+        "it is a symbolic link"
+    ]
+    assert outside.read_bytes() == b"keep"

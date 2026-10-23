@@ -3,13 +3,16 @@ import io
 import json
 import os
 import select
+import stat
 import struct
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
+from fontTools.ttLib import TTFont
 
 from halfbold import browser
 from halfbold.settings import Settings, save_settings
@@ -58,8 +61,22 @@ def test_setup_registers_stable_extension_and_module_host(tmp_path, monkeypatch)
     assert (extension / "pagefonts.js").read_bytes() == (
         EXTENSION_SOURCE / "pagefonts.js"
     ).read_bytes()
+    assert (extension / "limited-body.js").read_bytes() == (
+        EXTENSION_SOURCE / "limited-body.js"
+    ).read_bytes()
     assert not (extension / "shadow.js").exists()
     assert browser.served_fonts_dir().is_dir()
+
+
+def test_setup_creates_the_served_secret_and_purges_legacy_fonts(tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    browser.served_fonts_dir().mkdir(parents=True)
+    (browser.served_fonts_dir() / "legacy.ttf").write_bytes(b"font")
+
+    browser.setup_browser(open_chrome=False)
+
+    assert not (browser.served_fonts_dir() / "legacy.ttf").exists()
+    assert browser.served_secret_path().exists()
 
 
 def test_disable_turns_conversion_off_and_can_delete_served_fonts(
@@ -88,6 +105,7 @@ def write_status(generation, **counts):
 
 def test_status_requires_recent_ack_of_current_generation(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    browser.served_secret()
     write_status(browser.current_generation(), converted=3, unchanged=1)
     status = browser.browser_status()
     assert status["synced"]
@@ -106,6 +124,20 @@ def test_status_requires_recent_ack_of_current_generation(tmp_path, monkeypatch)
     assert not browser.browser_status()["connected"]
     stale.write_text("{")
     assert not browser.browser_status()["connected"]
+
+
+def test_status_never_creates_the_served_secret_or_purges_fonts(tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    browser.served_fonts_dir().mkdir(parents=True)
+    (browser.served_fonts_dir() / "legacy.ttf").write_bytes(b"font")
+    write_status(None, converted=1)
+
+    status = browser.browser_status()
+
+    assert status["connected"]
+    assert not status["synced"]
+    assert (browser.served_fonts_dir() / "legacy.ttf").exists()
+    assert not browser.served_secret_path().exists()
 
 
 class Host:
@@ -184,6 +216,15 @@ def encoded_face(path: Path, weight: int) -> dict:
     }
 
 
+def without_family_names(source: Path, target: Path) -> Path:
+    font = TTFont(source)
+    font["name"].names = [
+        record for record in font["name"].names if record.nameID not in (1, 16, 21)
+    ]
+    font.save(target)
+    return target
+
+
 def test_host_converts_a_webfont_into_the_served_fonts(host_home, font_pair):
     regular, bold = font_pair
     host = Host(host_home)
@@ -204,6 +245,77 @@ def test_host_converts_a_webfont_into_the_served_fonts(host_home, font_pair):
         host.kill()
 
 
+def test_host_replies_never_carry_the_served_secret(host_home, font_pair):
+    regular, bold = font_pair
+    host = Host(host_home)
+    try:
+        host.receive(is_config)
+        host.send(
+            {
+                "type": "convert-webfont",
+                "id": 8,
+                "faces": [encoded_face(regular, 400), encoded_face(bold, 700)],
+            }
+        )
+        seen = host.receive(lambda m: m.get("id") == 8)
+    finally:
+        host.kill()
+    secret = browser.served_secret()
+    assert secret.hex() not in json.dumps(seen)
+    assert base64.b64encode(secret).decode() not in json.dumps(seen)
+
+
+def test_served_secret_is_created_once_and_readable_only_by_the_user(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    secret = browser.served_secret()
+
+    assert browser.served_secret() == secret
+    assert len(secret) == 32
+    assert stat.S_IMODE(browser.served_secret_path().stat().st_mode) == 0o600
+
+
+def test_creating_the_secret_removes_served_fonts_from_before(tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    browser.served_fonts_dir().mkdir(parents=True)
+    (browser.served_fonts_dir() / "0123abcd.ttf").write_bytes(b"font")
+
+    browser.served_secret()
+
+    assert not (browser.served_fonts_dir() / "0123abcd.ttf").exists()
+    assert browser.served_fonts_dir().is_dir()
+
+
+def test_a_malformed_secret_is_replaced(tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    browser.support_dir().mkdir(parents=True)
+    browser.served_secret_path().write_bytes(b"short")
+
+    secret = browser.served_secret()
+
+    assert len(secret) == 32
+    assert browser.served_secret_path().read_bytes() == secret
+
+
+def test_concurrent_first_use_agrees_on_one_secret(tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        seen = set(pool.map(lambda _: browser.served_secret(), range(40)))
+
+    assert len(seen) == 1
+    assert browser.served_secret_path().read_bytes() == seen.pop()
+
+
+def test_generation_changes_when_the_secret_changes():
+    settings = Settings()
+
+    assert browser.generation(True, settings, b"a" * 32) != browser.generation(
+        True, settings, b"b" * 32
+    )
+
+
 def test_host_reports_malformed_requests_as_unchanged(host_home):
     host = Host(host_home)
     try:
@@ -211,6 +323,36 @@ def test_host_reports_malformed_requests_as_unchanged(host_home):
         host.send({"type": "convert-webfont", "id": "x", "faces": [{"data": "!"}]})
         [*_, reply] = host.receive(lambda m: m.get("id") == "x")
         assert reply["type"] == "unchanged"
+    finally:
+        host.kill()
+
+
+def test_host_keeps_serving_after_a_conversion_fails_outside_the_caught_errors(
+    host_home, font_pair, tmp_path
+):
+    regular, bold = font_pair
+    nameless = without_family_names(regular, tmp_path / "Nameless-Regular.ttf")
+    host = Host(host_home)
+    try:
+        host.receive(is_config)
+        host.send(
+            {
+                "type": "convert-webfont",
+                "id": 1,
+                "faces": [encoded_face(nameless, 400), encoded_face(bold, 700)],
+            }
+        )
+        [*_, failed] = host.receive(lambda m: m.get("id") == 1)
+        assert failed["type"] == "unchanged"
+        host.send(
+            {
+                "type": "convert-webfont",
+                "id": 2,
+                "faces": [encoded_face(regular, 400), encoded_face(bold, 700)],
+            }
+        )
+        [*_, reply] = host.receive(lambda m: m.get("id") == 2)
+        assert reply["type"] == "converted"
     finally:
         host.kill()
 

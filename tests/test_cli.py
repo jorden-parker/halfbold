@@ -2,8 +2,20 @@ import sys
 from pathlib import Path
 
 import pytest
+from conftest import make_font
 
 from halfbold.cli import main
+
+HOSTILE_FAMILY = "Ev\x1b]0;pwn\x07\r\n\x9b\x7f Name"
+HOSTILE_FAMILY_ESCAPED = "Ev\\x1b]0;pwn\\x07\\x0d\\x0a\\x9b\\x7f Name"
+HOSTILE_STEM_ESCAPED = "Ev\\x1b]0;pwn\\x07\\x0d\\x0a\\x9b\\x7fName"
+DETAIL = "  plain Regular 400, bold Bold 700 (sans)"
+
+
+def write_family(fonts: Path, family: str) -> Path:
+    make_font(fonts / "Family-Regular.ttf", family, "Regular", 100)
+    make_font(fonts / "Family-Bold.ttf", family, "Bold", 200)
+    return fonts
 
 
 def test_sync_skips_current_fonts_and_rebuild_regenerates_them(
@@ -69,3 +81,33 @@ def test_list_reports_the_resolved_faces(multi_weight_family: Path, capsys):
         == 0
     )
     assert "plain Light 300, bold Bold 700" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("command", "prefix"), [("list", "would build "), ("sync", "built       ")]
+)
+def test_family_control_characters_print_escaped(
+    command: str, prefix: str, tmp_path: Path, capsys
+):
+    write_family(tmp_path, HOSTILE_FAMILY)
+
+    assert main([command, "--fonts-dir", str(tmp_path)]) == 0
+
+    assert capsys.readouterr().out.splitlines() == [
+        f"{prefix}{HOSTILE_STEM_ESCAPED}-Half.ttf  <- {HOSTILE_FAMILY_ESCAPED}{DETAIL}"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("family", "stem"), [("Test", "Test"), ("Café 黒体 😀", "Café黒体😀")]
+)
+def test_printable_family_names_print_unchanged(
+    family: str, stem: str, tmp_path: Path, capsys
+):
+    write_family(tmp_path, family)
+
+    assert main(["list", "--fonts-dir", str(tmp_path)]) == 0
+
+    assert (
+        capsys.readouterr().out == f"would build {stem}-Half.ttf  <- {family}{DETAIL}\n"
+    )

@@ -1,7 +1,10 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -51,5 +54,33 @@ func TestRunnerPreviewCaskArgs(t *testing.T) {
 	want := []string{"run", "--project", "/repo", "halfbold", "--preview-cask", "font-roboto", "--wait"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+func TestRunnerRunEscapesEchoedFileNameAndKeepsArguments(t *testing.T) {
+	bin := t.TempDir()
+	argsFile := filepath.Join(bin, "args.txt")
+	script := "#!/bin/sh\nprintf 'warn \\033]0;x\\007\\n'\nprintf '%s\\n' \"$@\" | tee '" + argsFile + "'\n"
+	if err := os.WriteFile(filepath.Join(bin, "uv"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	out := "/o/Evil\x1b]2;x\x07-Half.ttf"
+	msg := runner{project: "/repo"}.run(candidate{regular: "/f/Evil.ttf"}, out)().(runDoneMsg)
+	if msg.err != nil {
+		t.Fatalf("unexpected error: %v", msg.err)
+	}
+	if !strings.Contains(msg.output, `/o/Evil\x1b]2;x\x07-Half.ttf`) || strings.Contains(msg.output, "\x1b]2;x") {
+		t.Fatalf("echoed file name not escaped: %q", msg.output)
+	}
+	if !strings.Contains(msg.output, `warn \x1b]0;x\x07`) || strings.Contains(msg.output, "\x1b]0;x") {
+		t.Fatalf("other run output control not escaped: %q", msg.output)
+	}
+	args, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(args), out) {
+		t.Fatalf("uv argument changed: %q", args)
 	}
 }

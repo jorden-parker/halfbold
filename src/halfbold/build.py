@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
+from fontTools.feaLib.lexer import Lexer
 from fontTools.pens.recordingPen import DecomposingRecordingPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTFont
@@ -173,6 +174,7 @@ def word_letter_glyphs(regular: TTFont, bold: TTFont) -> Letters:
             continue
         seen.add(name)
         (upper if char.isupper() else lower).append(name)
+    require_fea_glyph_names(lower + upper)
     return Letters(lower, upper)
 
 
@@ -221,6 +223,23 @@ def bold_split(
     return start, total - start
 
 
+def require_fea_glyph_names(names: list[str]) -> None:
+    unusable = [name for name in names if not is_fea_glyph_name(name)]
+    if unusable:
+        listed = ", ".join(repr(name) for name in unusable)
+        raise ValueError(f"letter glyph names cannot be used in feature code: {listed}")
+
+
+def is_fea_glyph_name(name: str) -> bool:
+    return (
+        bool(name)
+        and name[0] in Lexer.CHAR_NAME_START_
+        and name[0] != "\\"
+        and all(char in Lexer.CHAR_NAME_CONTINUATION_ for char in name[1:])
+        and name != "include"
+    )
+
+
 def build_feature_code(
     letters: Letters,
     max_word_length: int = MAX_WORD_LENGTH,
@@ -228,6 +247,7 @@ def build_feature_code(
     min_word_length: int = MIN_WORD_LENGTH,
     bold_ends: int = BOLD_ENDS,
 ) -> str:
+    require_fea_glyph_names(letters.names)
     lines = [
         f"@lower = [{' '.join(letters.lower)}];",
         f"@upper = [{' '.join(letters.upper)}];",

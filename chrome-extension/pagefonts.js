@@ -2,6 +2,8 @@
   if (globalThis.halfboldPageFontsRunning) return;
   globalThis.halfboldPageFontsRunning = true;
   const {
+    LIMITS,
+    allowsPageFetch,
     familyKey,
     fontFaceDescriptors,
     isConvertibleFamily,
@@ -9,8 +11,10 @@
     normalStyle,
     parseFamilyList,
     pickFontUrl,
+    toBase64,
     weightRange,
   } = globalThis.halfboldPageFonts;
+  const { createByteBudget, fetchLimitedBytes } = globalThis.halfboldLimitedBody;
   const SCAN_DELAY = 500;
   const MAX_TEXT_NODES = 5000;
   const caltSheet = new CSSStyleSheet();
@@ -21,6 +25,7 @@
   const totals = { converted: 0, unchanged: 0 };
   let config = { enabled: false, generation: null };
   let scanTimer = null;
+  let pageBudget = createByteBudget(LIMITS.pageBytes);
 
   caltSheet.replaceSync(
     '* { text-rendering: optimizeLegibility !important; font-feature-settings: "calt" 1 !important; }',
@@ -125,17 +130,33 @@
     }
   }
 
+  function allowsFromThisPage(url) {
+    return allowsPageFetch([location.href], url);
+  }
+
+  async function fetchPageBytes(url, limit) {
+    if (!allowsFromThisPage(url)) throw new Error(`blocked ${url}`);
+    const budget = pageBudget;
+    const reserved = budget.reserve(limit);
+    const bytes = await fetchLimitedBytes(url, { limit: reserved, timeoutMs: LIMITS.fetchTimeoutMs });
+    budget.settle(reserved, bytes.length);
+    return bytes;
+  }
+
+  async function fetchStylesheetRules(href) {
+    try {
+      const bytes = await fetchPageBytes(href, LIMITS.stylesheetBytes);
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(new TextDecoder().decode(bytes));
+      return [...sheet.cssRules];
+    } catch {
+      return [];
+    }
+  }
+
   async function crossOriginRules(href) {
     if (!crossOriginSheets.has(href)) {
-      crossOriginSheets.set(
-        href,
-        ask({ type: "halfbold-fetch-css", url: href }).then((reply) => {
-          if (typeof reply?.css !== "string") return [];
-          const sheet = new CSSStyleSheet();
-          sheet.replaceSync(reply.css);
-          return [...sheet.cssRules];
-        }),
-      );
+      crossOriginSheets.set(href, fetchStylesheetRules(href));
     }
     return crossOriginSheets.get(href);
   }
@@ -158,6 +179,32 @@
     return faces;
   }
 
+  async function encodedFaces(faces) {
+    const encoded = [];
+    let familyLeft = LIMITS.familyBytes;
+    for (const face of faces.filter((candidate) => allowsFromThisPage(candidate.url))) {
+      const bytes = await fetchPageBytes(face.url, familyLeft);
+      familyLeft -= bytes.length;
+      encoded.push({
+        weight: face.weight,
+        style: face.style,
+        unicodeRange: face.unicodeRange,
+        data: toBase64(bytes),
+      });
+    }
+    return encoded;
+  }
+
+  async function convertDeclared(faces) {
+    const stored = await ask({ type: "halfbold-stored-webfont", faces });
+    if (stored?.type === "converted") return stored;
+    try {
+      return await ask({ type: "halfbold-convert-webfont", faces: await encodedFaces(faces) });
+    } catch {
+      return { type: "unchanged" };
+    }
+  }
+
   async function scan() {
     const generation = config.generation;
     const families = usedFamilies();
@@ -168,7 +215,7 @@
       fresh.map(async ([key, family]) => {
         requested.add(key);
         const reply = declared.has(key)
-          ? await ask({ type: "halfbold-convert-webfont", family, faces: declared.get(key) })
+          ? await convertDeclared(declared.get(key))
           : await ask({ type: "halfbold-convert-installed", family });
         if (generation !== config.generation) return;
         await applyConversion(family, reply);
@@ -214,6 +261,7 @@
     for (const face of addedFaces.splice(0)) document.fonts.delete(face);
     requested.clear();
     crossOriginSheets.clear();
+    pageBudget = createByteBudget(LIMITS.pageBytes);
     totals.converted = 0;
     totals.unchanged = 0;
   }

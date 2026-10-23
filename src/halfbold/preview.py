@@ -12,8 +12,10 @@ from typing import BinaryIO
 from PIL import Image, ImageDraw, ImageFont
 
 from halfbold.build import bold_prefix_length
+from halfbold.output_paths import contained_file, file_stem
 from halfbold.scan import Candidate, candidates_from_paths, read_font_info
 from halfbold.settings import BOLD_WEIGHT, REGULAR_WEIGHT, load_settings
+from halfbold.terminal import escape_control_characters
 
 SAMPLE_TEXT = (
     "The quick brown fox jumps over the lazy dog. Reading gets faster when "
@@ -172,10 +174,14 @@ def preview_images(
                 image, sys.stdout.buffer, os.environ, shutil.get_terminal_size().columns
             )
         else:
-            stem = candidate.family.replace(" ", "")
-            path = Path(tempfile.gettempdir()) / f"halfbold-preview-{stem}.png"
+            temp_folder = Path(tempfile.gettempdir())
+            name = f"halfbold-preview-{file_stem(candidate.family)}.png"
+            path = contained_file(temp_folder, name)
             image.save(path)
-            lines.append(f"this terminal has no kitty graphics support; wrote {path}")
+            shown_path = temp_folder / escape_control_characters(name)
+            lines.append(
+                f"this terminal has no kitty graphics support; wrote {shown_path}"
+            )
     remaining = len(candidates) - len(shown)
     if remaining > 0:
         lines.append(f"… and {remaining} more")

@@ -1,18 +1,20 @@
 import base64
+import fcntl
 import hashlib
 import json
 import os
+import secrets
 import select
 import shlex
 import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
+from contextlib import contextmanager
 from pathlib import Path
-
-from fontTools.ttLib import TTLibError
 
 from halfbold.chrome_fonts import (
     WebFace,
@@ -29,6 +31,7 @@ EXTENSION_FILES = (
     "manifest.json",
     "pagefonts-core.js",
     "pagefonts.js",
+    "limited-body.js",
     "autoreload.js",
 )
 RETIRED_EXTENSION_FILES = ("halfbold.css", "shadow.js")
@@ -36,6 +39,7 @@ MAX_MESSAGE_SIZE = 16 * 1024 * 1024
 CONVERSION_TIMEOUT = 60
 HEARTBEAT_INTERVAL = 2
 INSTALLED_REFRESH_INTERVAL = 300
+SERVED_SECRET_BYTES = 32
 
 
 def support_dir() -> Path:
@@ -48,6 +52,54 @@ def extension_dir() -> Path:
 
 def served_fonts_dir() -> Path:
     return extension_dir() / "fonts"
+
+
+def served_secret_path() -> Path:
+    return support_dir() / "served.key"
+
+
+def read_served_secret() -> bytes | None:
+    try:
+        secret = served_secret_path().read_bytes()
+    except FileNotFoundError:
+        return None
+    return secret if len(secret) == SERVED_SECRET_BYTES else None
+
+
+@contextmanager
+def served_secret_lock():
+    support_dir().mkdir(parents=True, exist_ok=True)
+    with (support_dir() / "served.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
+
+
+def clear_served_fonts() -> None:
+    if served_fonts_dir().exists():
+        shutil.rmtree(served_fonts_dir())
+    served_fonts_dir().mkdir(parents=True)
+
+
+def publish_served_secret() -> bytes:
+    clear_served_fonts()
+    secret = secrets.token_bytes(SERVED_SECRET_BYTES)
+    descriptor, partial = tempfile.mkstemp(dir=support_dir())
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(secret)
+        os.replace(partial, served_secret_path())
+    finally:
+        Path(partial).unlink(missing_ok=True)
+    return secret
+
+
+def served_secret() -> bytes:
+    if (secret := read_served_secret()) is not None:
+        return secret
+    with served_secret_lock():
+        if (secret := read_served_secret()) is not None:
+            return secret
+        return publish_served_secret()
 
 
 def user_fonts_dir() -> Path:
@@ -74,12 +126,22 @@ def write_enabled(enabled: bool) -> None:
     partial.replace(root / "config.json")
 
 
-def generation(enabled: bool, settings: Settings) -> str:
-    return hashlib.sha256(f"{enabled}:{settings.cache_tag()}".encode()).hexdigest()
+def generation(enabled: bool, settings: Settings, secret: bytes) -> str:
+    digest = hashlib.sha256(f"{enabled}:{settings.cache_tag()}".encode())
+    digest.update(secret)
+    return digest.hexdigest()
 
 
-def current_generation() -> str:
-    return generation(read_enabled(), load_settings())
+def current_generation() -> str | None:
+    secret = read_served_secret()
+    if secret is None:
+        return None
+    return generation(read_enabled(), load_settings(), secret)
+
+
+def status_acknowledges_current(status: dict) -> bool:
+    current = current_generation()
+    return current is not None and status.get("generation") == current
 
 
 def browser_status() -> dict:
@@ -91,7 +153,7 @@ def browser_status() -> dict:
     return {
         "configured": (extension_dir() / "manifest.json").exists(),
         "connected": connected,
-        "synced": connected and status.get("generation") == current_generation(),
+        "synced": connected and status_acknowledges_current(status),
         "enabled": read_enabled(),
         "converted": status.get("converted", 0) if connected else 0,
         "unchanged": status.get("unchanged", 0) if connected else 0,
@@ -156,6 +218,7 @@ def open_chrome_extensions() -> None:
 
 def setup_browser(*, open_chrome: bool = True, source: Path = EXTENSION_SOURCE) -> dict:
     copy_extension(source)
+    served_secret()
     register_host(write_launcher())
     write_enabled(True)
     if open_chrome:
@@ -230,11 +293,17 @@ def handle_request(
     kind = message["type"]
     if kind == "convert-webfont":
         faces = [web_face(entry) for entry in message["faces"]]
-        conversion = convert_webfont_family(faces, served_fonts_dir(), settings)
+        conversion = convert_webfont_family(
+            faces, served_fonts_dir(), settings, served_secret()
+        )
         return {"type": "converted", **conversion.as_dict()}
     if kind == "convert-installed":
         conversion = convert_installed_family(
-            str(message["family"]), installed.paths(), served_fonts_dir(), settings
+            str(message["family"]),
+            installed.paths(),
+            served_fonts_dir(),
+            settings,
+            served_secret(),
         )
         return {"type": "converted", **conversion.as_dict()}
     if kind == "defaults":
@@ -249,7 +318,7 @@ def handle_request(
 def safe_reply(message: dict, settings: Settings, installed: InstalledFonts) -> dict:
     try:
         reply = handle_request(message, settings, installed)
-    except (ValueError, KeyError, TypeError, OSError, TTLibError) as error:
+    except Exception as error:
         reply = {"type": "unchanged", "reason": str(error)}
     return {**reply, "id": message["id"]}
 
@@ -291,7 +360,7 @@ def serve(stdin, stdout, pool: ThreadPoolExecutor) -> None:
     while True:
         enabled = read_enabled()
         settings = load_settings()
-        current = generation(enabled, settings)
+        current = generation(enabled, settings, served_secret())
         if current != sent_generation:
             write_message(
                 stdout, {"type": "config", "enabled": enabled, "generation": current}

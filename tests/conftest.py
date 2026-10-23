@@ -39,10 +39,11 @@ def make_font(
     features: str = "",
     weight: int = 400,
     glyph_prefix: str = "",
+    letter_glyphs: dict[str, str] | None = None,
 ) -> Path:
-    letter_names = [glyph_prefix + c for c in LETTERS]
-    names = [".notdef", "space", *letter_names]
-    cmap = {ord(" "): "space", **{ord(c): glyph_prefix + c for c in LETTERS}}
+    glyph_for = {c: glyph_prefix + c for c in LETTERS} | (letter_glyphs or {})
+    names = [".notdef", "space", *(glyph_for[c] for c in LETTERS)]
+    cmap = {ord(" "): "space", **{ord(c): glyph_for[c] for c in LETTERS}}
     if features:
         names += ["hyphen", "greater", "arrow", "f_i"]
         cmap |= {ord("-"): "hyphen", ord(">"): "greater"}

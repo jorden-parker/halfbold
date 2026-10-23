@@ -1,6 +1,10 @@
 import hashlib
-import io
+import hmac
+import struct
+import subprocess
+import sys
 import tempfile
+import time
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
@@ -66,8 +70,12 @@ class Conversion:
         }
 
 
-def served_key(sources: Sequence[bytes], settings: Settings) -> str:
-    digest = hashlib.sha256(f"{SERVED_FONT_VERSION}:{settings.cache_tag()}".encode())
+def served_key(sources: Sequence[bytes], settings: Settings, secret: bytes) -> str:
+    digest = hmac.new(
+        secret,
+        f"{SERVED_FONT_VERSION}:{settings.cache_tag()}".encode(),
+        hashlib.sha256,
+    )
     for source in sources:
         digest.update(hashlib.sha256(source).digest())
     return digest.hexdigest()[:32]
@@ -79,13 +87,87 @@ def is_icon_font(font: TTFont) -> bool:
     return private * 2 > len(cmap)
 
 
-def write_truetype(data: bytes, path: Path) -> Path:
-    font = TTFont(io.BytesIO(data))
-    if is_icon_font(font):
-        raise ValueError("icon font")
-    font.flavor = None
-    font.save(path)
+@dataclass(frozen=True)
+class WebfontLimits:
+    seconds: float = 30
+    cpu_seconds: int = 30
+    memory_bytes: int = 1 << 30
+
+
+DEFAULT_WEBFONT_LIMITS = WebfontLimits()
+MAX_EXPANDED_BYTES = 128 << 20
+WOFF_SIGNATURES = (b"wOFF", b"wOF2")
+TOTAL_SFNT_SIZE = struct.Struct(">L")
+TOTAL_SFNT_SIZE_OFFSET = 16
+RESIDENT_POLL_SECONDS = 0.05
+KIBIBYTE = 1024
+
+
+def declared_expanded_size(data: bytes) -> int | None:
+    if data[:4] not in WOFF_SIGNATURES or len(data) < TOTAL_SFNT_SIZE_OFFSET + 4:
+        return None
+    return TOTAL_SFNT_SIZE.unpack_from(data, TOTAL_SFNT_SIZE_OFFSET)[0]
+
+
+def write_webfont_truetype(
+    data: bytes, path: Path, limits: WebfontLimits = DEFAULT_WEBFONT_LIMITS
+) -> Path:
+    expanded = declared_expanded_size(data)
+    if expanded is not None and expanded > MAX_EXPANDED_BYTES:
+        raise ValueError("web font declares too large an expansion")
+    source = path.with_suffix(".webfont")
+    source.write_bytes(data)
+    convert_in_child(source, path, limits)
+    with TTFont(path) as font:
+        if is_icon_font(font):
+            raise ValueError("icon font")
     return path
+
+
+def convert_in_child(source: Path, target: Path, limits: WebfontLimits) -> None:
+    command = [
+        sys.executable,
+        "-I",
+        "-m",
+        "halfbold.webfont_child",
+        str(source),
+        str(target),
+        str(limits.cpu_seconds),
+        str(limits.memory_bytes),
+    ]
+    with subprocess.Popen(
+        command,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    ) as child:
+        wait_for_child(child, limits)
+    if child.returncode != 0:
+        raise ValueError("web font could not be converted")
+
+
+def wait_for_child(child: subprocess.Popen, limits: WebfontLimits) -> None:
+    deadline = time.monotonic() + limits.seconds
+    while child.poll() is None:
+        if (
+            time.monotonic() > deadline
+            or resident_bytes(child.pid) > limits.memory_bytes
+        ):
+            child.kill()
+            child.wait()
+            raise ValueError("web font conversion exceeded its limits")
+        time.sleep(RESIDENT_POLL_SECONDS)
+
+
+def resident_bytes(pid: int) -> int:
+    completed = subprocess.run(
+        ["ps", "-o", "rss=", "-p", str(pid)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    digits = completed.stdout.strip()
+    return int(digits) * KIBIBYTE if digits.isdigit() else 0
 
 
 def served_half(
@@ -137,16 +219,24 @@ def plain_weight_descriptor(face: WebFace, settings: Settings) -> str:
 
 
 def convert_webfont_group(
-    faces: Sequence[WebFace], fonts_dir: Path, settings: Settings
+    faces: Sequence[WebFace],
+    fonts_dir: Path,
+    settings: Settings,
+    secret: bytes,
+    limits: WebfontLimits,
 ) -> ServedFace:
     plain, bold = webfont_pair(faces, settings)
     sources = [plain.data] if bold is None else [plain.data, bold.data]
-    key = served_key(sources, settings)
+    key = served_key(sources, settings, secret)
     with tempfile.TemporaryDirectory() as scratch:
-        plain_path = write_truetype(plain.data, Path(scratch) / "plain.ttf")
+        plain_path = write_webfont_truetype(
+            plain.data, Path(scratch) / "plain.ttf", limits
+        )
         bold_path = None
         if bold is not None:
-            bold_path = write_truetype(bold.data, Path(scratch) / "bold.ttf")
+            bold_path = write_webfont_truetype(
+                bold.data, Path(scratch) / "bold.ttf", limits
+            )
         name = served_half(key, fonts_dir, plain_path, bold_path, settings)
     return ServedFace(
         plain_weight_descriptor(plain, settings),
@@ -168,12 +258,18 @@ def group_label(style: str, unicode_range: str) -> str:
 
 
 def convert_webfont_family(
-    faces: Sequence[WebFace], fonts_dir: Path, settings: Settings
+    faces: Sequence[WebFace],
+    fonts_dir: Path,
+    settings: Settings,
+    secret: bytes,
+    limits: WebfontLimits = DEFAULT_WEBFONT_LIMITS,
 ) -> Conversion:
     conversion = Conversion()
     for (style, unicode_range), group in webfont_groups(faces).items():
         try:
-            conversion.faces.append(convert_webfont_group(group, fonts_dir, settings))
+            conversion.faces.append(
+                convert_webfont_group(group, fonts_dir, settings, secret, limits)
+            )
         except (ValueError, TTLibError) as error:
             conversion.unchanged.append(f"{group_label(style, unicode_range)}: {error}")
     return conversion
@@ -218,10 +314,10 @@ def local_face(info: FontInfo) -> ServedFace:
 
 
 def installed_half_faces(
-    candidate: Candidate, fonts_dir: Path, settings: Settings
+    candidate: Candidate, fonts_dir: Path, settings: Settings, secret: bytes
 ) -> list[ServedFace]:
     paths = [path for path in (candidate.regular, candidate.bold) if path is not None]
-    key = served_key([file_identity(path) for path in paths], settings)
+    key = served_key([file_identity(path) for path in paths], settings, secret)
     plain = served_half(key, fonts_dir, candidate.regular, candidate.bold, settings)
     bold = served_bold(key, fonts_dir, candidate.regular, candidate.bold, settings)
     return [
@@ -231,7 +327,11 @@ def installed_half_faces(
 
 
 def convert_installed_family(
-    family: str, face_paths: Sequence[Path], fonts_dir: Path, settings: Settings
+    family: str,
+    face_paths: Sequence[Path],
+    fonts_dir: Path,
+    settings: Settings,
+    secret: bytes,
 ) -> Conversion:
     members = family_members(family, face_paths)
     if not members:
@@ -241,7 +341,7 @@ def convert_installed_family(
         return Conversion(unchanged=[f"{family}: needs a second weight"])
     candidate = candidates[0]
     try:
-        served = installed_half_faces(candidate, fonts_dir, settings)
+        served = installed_half_faces(candidate, fonts_dir, settings, secret)
     except (ValueError, TTLibError) as error:
         return Conversion(unchanged=[f"{family}: {error}"])
     replaced = {candidate.regular, candidate.bold}

@@ -13,6 +13,7 @@ from halfbold.desktop import launch_desktop
 from halfbold.preview import preview_candidates, preview_files
 from halfbold.scan import build_all
 from halfbold.settings import load_settings
+from halfbold.terminal import escape_control_characters
 
 DEFAULT_FONTS_DIR = Path.home() / "Library" / "Fonts"
 COMMANDS = {
@@ -218,7 +219,7 @@ def main(argv: list[str] | None = None) -> int:
         for line in build_all(
             args.fonts_dir, force=args.force, dry_run=args.dry_run, settings=settings
         ):
-            print(line)
+            print(escape_control_characters(line))
         return 0
     output = args.output or args.regular.with_name(f"{args.regular.stem}-Half.ttf")
     letters = build_halfbold_font(args.regular, args.bold, output, settings)

@@ -1,7 +1,9 @@
 from pathlib import Path
 
+import pytest
 from conftest import make_font
 from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
+from fontTools.feaLib.lexer import Lexer
 from fontTools.pens.boundsPen import BoundsPen
 from fontTools.ttLib import TTFont
 from fontTools.ttLib.tables.DefaultTable import DefaultTable
@@ -17,6 +19,7 @@ from halfbold.build import (
     build_feature_code,
     build_halfbold_font,
     copy_bold_glyphs,
+    is_fea_glyph_name,
     rename_font,
     word_letter_glyphs,
 )
@@ -130,6 +133,85 @@ def test_build_pairs_bold_glyphs_by_character_not_glyph_name(tmp_path: Path):
     font = TTFont(out)
     assert len(letters) == 52
     assert font["hmtx"]["a" + BOLD_SUFFIX][0] == 300
+
+
+@pytest.mark.parametrize(
+    "name", ["a", "Q", ".notdef", "f_f", "uni0750", "a.sc", "a-b", "x+y", "x/y", "A*"]
+)
+def test_plain_fea_glyph_names_are_accepted(name: str):
+    assert is_fea_glyph_name(name)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "",
+        "include",
+        "uni0750;",
+        "a include(/dev/zero)",
+        "x;",
+        "\\abc",
+        "a b",
+        "a#c",
+        "-a",
+        "1a",
+        "0",
+        "é",
+    ],
+)
+def test_names_fea_cannot_carry_are_rejected(name: str):
+    assert not is_fea_glyph_name(name)
+
+
+def lexed(text: str) -> list[tuple[str, object]]:
+    return [(kind, token) for kind, token, _ in Lexer(text, "<glyph name>")]
+
+
+@pytest.mark.parametrize("name", ["a", "a.alt", "uni0750", "a-b", "x+y", "x/y", "A*"])
+def test_fontTools_lexer_reads_an_accepted_name_as_one_name_token(name: str):
+    assert lexed(name) == [(Lexer.NAME, name)]
+
+
+@pytest.mark.parametrize(
+    ("text", "tokens"),
+    [
+        ("1a", [(Lexer.NUMBER, 1), (Lexer.NAME, "a")]),
+        ("a b", [(Lexer.NAME, "a"), (Lexer.NAME, "b")]),
+        ("a;", [(Lexer.NAME, "a"), (Lexer.SYMBOL, ";")]),
+        ("a#c", [(Lexer.NAME, "a"), (Lexer.COMMENT, "#c")]),
+    ],
+)
+def test_fontTools_lexer_splits_text_that_is_not_one_name(
+    text: str, tokens: list[tuple[str, object]]
+):
+    assert lexed(text) == tokens
+
+
+def test_feature_code_refuses_names_fea_cannot_carry():
+    unsafe = Letters(["a include(/dev/zero)", "b"], ["A", "C;"])
+    with pytest.raises(ValueError) as error:
+        build_feature_code(unsafe)
+    assert "'a include(/dev/zero)', 'C;'" in str(error.value)
+
+
+def test_build_refuses_glyph_names_fea_cannot_carry(tmp_path: Path):
+    inject = tmp_path / "inject.fea"
+    inject.write_text("this is not feature code\n")
+    regular = make_font(
+        tmp_path / "Odd-Regular.ttf",
+        "Odd",
+        "Regular",
+        100,
+        letter_glyphs={"a": f"a include({inject})", "x": "x;"},
+    )
+    bold = make_font(tmp_path / "Odd-Bold.ttf", "Odd", "Bold", 200)
+    out = tmp_path / "Odd-Half.ttf"
+
+    with pytest.raises(ValueError) as error:
+        build_halfbold_font(regular, bold, out)
+
+    assert f"'a include({inject})', 'x;'" in str(error.value)
+    assert not out.exists()
 
 
 def test_build_drops_apple_shaping_tables_that_hide_calt(
